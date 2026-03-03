@@ -1,0 +1,27 @@
+# Secrets
+shared/.env
+
+# Tailscale state (contains private keys)
+**/state/
+**/ts-dns-state/
+**/ts-proxy-state/
+**/tailscale-state/
+
+# TLS certs
+**/letsencrypt/
+**/certs/
+
+# App data & databases
+**/data/
+**/config/
+**/runtime/
+**/models/
+
+# Logs
+*.log
+*.log1.txt
+*.log2.txt
+
+# Portainer DB
+portainer.db
+*.db

@@ -1,0 +1,28 @@
+services:
+  ts-dns:
+    image: tailscale/tailscale:latest
+    container_name: ts-dns
+    hostname: ${TS_HOSTNAME_DNS}
+    env_file:
+      - ../../shared/.env
+    environment:
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+    volumes:
+      - ./ts-dns-state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    restart: unless-stopped
+
+  adguard:
+    image: adguard/adguardhome
+    container_name: adguard-internal
+    restart: unless-stopped
+    network_mode: "service:ts-dns"
+    volumes:
+      - ./data:/opt/adguardhome/work
+      - ./config:/opt/adguardhome/conf
+    depends_on:
+      - ts-dns

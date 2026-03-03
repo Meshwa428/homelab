@@ -1,0 +1,11 @@
+services:
+  watchtower:
+    container_name: watchtower
+    image: nickfedor/watchtower:latest
+    restart: always
+    environment:
+      WATCHTOWER_CLEANUP: true
+      WATCHTOWER_REMOVE_VOLUMES: true
+      WATCHTOWER_POLL_INTERVAL: 14400
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

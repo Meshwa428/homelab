@@ -1,0 +1,16 @@
+services:
+  code-server:
+    image: codercom/code-server:latest
+    container_name: code-server
+    env_file:
+      - ../../shared/.env
+    environment:
+      - DOCKER_USER=${USER}
+    user: "${UID}:${GID}"
+    volumes:
+      - ./projects:/home/coder/projects
+      - ./config:/home/coder/.config
+    ports:
+      - "127.0.0.1:8081:8080"
+    tty: true
+    stdin_open: true
