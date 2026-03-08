@@ -1,0 +1,29 @@
+# =============================================================================
+# scripts/services.dep — Service dependency declarations
+# =============================================================================
+#
+# Only list services that HAVE dependencies.
+# Everything else is auto-discovered from compose.yml files and runs
+# alphabetically. Boot order is derived automatically via topological sort.
+#
+# FORMAT:
+#   service -> dep1 dep2 dep3
+#
+# RULES:
+#   - Left side:  the service that needs something before it can start
+#   - Right side: one or more space-separated services it depends on
+#   - Circular dependencies are detected and reported clearly on every run
+#   - Names must match the directory name containing the compose.yml
+#
+# ADDING A SERVICE WITH NO DEPENDENCIES:
+#   Just create the compose.yml anywhere under homelab/. Done.
+#   No entry needed here.
+#
+# ADDING A SERVICE THAT DEPENDS ON OTHERS:
+#   myservice -> dep1 dep2
+#
+# =============================================================================
+
+dns        -> vpn
+traefik    -> vpn
+open-webui -> ollama

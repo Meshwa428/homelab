@@ -4,7 +4,7 @@ services:
     container_name: ts-dns
     hostname: ${TS_HOSTNAME_DNS}
     env_file:
-      - ../../shared/.env
+      - .env
     environment:
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_USERSPACE=false

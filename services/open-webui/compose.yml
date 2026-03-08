@@ -4,13 +4,20 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     restart: always
     env_file:
-      - ../../shared/.env
-    ports:
-      - "8080:8080"
+      - .env
     volumes:
-      - open-webui-data:/app/backend/data
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - ./data:/app/backend/data
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.open-webui.rule=Host(`ai.homeserver.com`)"
+      - "traefik.http.routers.open-webui.entrypoints=websecure"
+      - "traefik.http.routers.open-webui.tls=true"
+      - "traefik.http.services.open-webui.loadbalancer.server.port=8080"
+      - "traefik.docker.network=proxy"
 
-volumes:
-  open-webui-data:
+networks:
+  proxy:
+    external: true
+    name: proxy

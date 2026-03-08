@@ -1,0 +1,4 @@
+networks:
+  proxy:
+    name: proxy
+    driver: bridge

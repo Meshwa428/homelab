@@ -1,10 +1,14 @@
-# Secrets
+# Env symlinks — all point to shared/.env, never commit
+**/.env
 shared/.env
+
+# Keep the example template
+!shared/.env.example
 
 # Tailscale state (contains private keys)
 **/state/
 **/ts-dns-state/
-**/ts-proxy-state/
+**/ts-traefik-state/
 **/tailscale-state/
 
 # TLS certs
@@ -25,3 +29,10 @@ shared/.env
 # Portainer DB
 portainer.db
 *.db
+apps/honeygain/.env
+
+# Wrapper
+apple-music-downloader/
+**/rootfs/
+*.so
+*.zip

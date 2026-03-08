@@ -1,0 +1,32 @@
+services:
+  copyparty:
+    image: copyparty/ac:latest
+    container_name: copyparty
+    restart: unless-stopped
+    command: >
+      --rproxy -1
+      --xff-src lan
+    volumes:
+      - ./config:/cfg
+      - /home/meshwa:/w
+    networks:
+      - proxy
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q 127.0.0.1:3923/?reset"]
+      interval: 1m
+      timeout: 2s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.copyparty.rule=Host(`copyparty.homeserver.com`)"
+      - "traefik.http.routers.copyparty.entrypoints=websecure"
+      - "traefik.http.routers.copyparty.tls=true"
+      - "traefik.http.services.copyparty.loadbalancer.server.port=3923"
+      - "traefik.docker.network=proxy"
+
+networks:
+  proxy:
+    external: true
+    name: proxy

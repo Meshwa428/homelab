@@ -2,15 +2,28 @@ services:
   code-server:
     image: codercom/code-server:latest
     container_name: code-server
+    restart: unless-stopped
     env_file:
-      - ../../shared/.env
+      - .env
     environment:
-      - DOCKER_USER=${USER}
-    user: "${UID}:${GID}"
+      - DOCKER_USER=meshwa
+    user: "1000:1000"
     volumes:
       - ./projects:/home/coder/projects
       - ./config:/home/coder/.config
-    ports:
-      - "127.0.0.1:8081:8080"
+    networks:
+      - proxy
     tty: true
     stdin_open: true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.vscode.rule=Host(`vscode.homeserver.com`)"
+      - "traefik.http.routers.vscode.entrypoints=websecure"
+      - "traefik.http.routers.vscode.tls=true"
+      - "traefik.http.services.vscode.loadbalancer.server.port=8080"
+      - "traefik.docker.network=proxy"
+
+networks:
+  proxy:
+    external: true
+    name: proxy

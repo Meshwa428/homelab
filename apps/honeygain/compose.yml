@@ -3,8 +3,6 @@ services:
     container_name: honeygain
     image: honeygain/honeygain:latest
     restart: always
-    env_file:
-      - ../../shared/.env
     command: >
       -tou-accept
       -email ${HONEYGAIN_EMAIL}

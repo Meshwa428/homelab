@@ -3,7 +3,19 @@ services:
     container_name: ollama
     image: ollama/ollama:latest
     restart: unless-stopped
-    ports:
-      - "11434:11434"
     volumes:
       - ./runtime:/root/.ollama
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ollama.rule=Host(`ollama.homeserver.com`)"
+      - "traefik.http.routers.ollama.entrypoints=websecure"
+      - "traefik.http.routers.ollama.tls=true"
+      - "traefik.http.services.ollama.loadbalancer.server.port=11434"
+      - "traefik.docker.network=proxy"
+
+networks:
+  proxy:
+    external: true
+    name: proxy

@@ -4,7 +4,7 @@ services:
     image: tailscale/tailscale:latest
     hostname: ${TS_HOSTNAME_VPN}
     env_file:
-      - ../../shared/.env
+      - .env
     environment:
       - TS_EXTRA_ARGS=--accept-routes
       - TS_STATE_DIR=/var/lib/tailscale
