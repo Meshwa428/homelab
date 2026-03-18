@@ -15,6 +15,7 @@ services:
       - NET_ADMIN
       - SYS_MODULE
     restart: unless-stopped
+    networks: [proxy]
 
   adguard:
     image: adguard/adguardhome
@@ -26,3 +27,15 @@ services:
       - ./config:/opt/adguardhome/conf
     depends_on:
       - ts-dns
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.adguard.rule=Host(`adguard.homeserver.com`)"
+      - "traefik.http.routers.adguard.entrypoints=websecure"
+      - "traefik.http.routers.adguard.tls=true"
+      - "traefik.http.services.adguard.loadbalancer.server.port=80"
+      - "traefik.docker.network=proxy"
+
+networks:
+  proxy:
+    external: true
+    name: proxy

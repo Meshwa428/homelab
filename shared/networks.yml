@@ -2,3 +2,10 @@ networks:
   proxy:
     name: proxy
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+    options:
+      dns: "8.8.8.8,1.1.1.1"

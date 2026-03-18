@@ -66,6 +66,8 @@ This repository contains the complete configuration for a personal homelab. Ever
     │  │ vscode   │  │
     │  │ ollama   │  │
     │  │copyparty │  │
+    │  │  kiwix   │  │
+    │  │ adguard  │  │
     │  └──────────┘  │
     └────────────────┘
 ```
@@ -97,23 +99,20 @@ cp shared/.env.example shared/.env
 nano shared/.env    # fill in all values
 ```
 
-### 2. Create symlinks for services that need secrets
+### 2. Configure secrets
 
-Each service that reads `shared/.env` needs a local symlink so Docker Compose can find it:
+Fill in your values in `shared/.env`. The management scripts automatically pass this file to every `docker compose` call via `--env-file`, so all `${VAR}` references in any compose file are resolved from a single source — no per-service symlinks needed.
 
 ```bash
-ln -s /home/meshwa/homelab/shared/.env core/dns/.env
-ln -s /home/meshwa/homelab/shared/.env core/vpn/.env
-ln -s /home/meshwa/homelab/shared/.env core/traefik/.env
-ln -s /home/meshwa/homelab/shared/.env services/vscode/.env
-ln -s /home/meshwa/homelab/shared/.env services/open-webui/.env
-ln -s /home/meshwa/homelab/shared/.env apps/honeygain/.env
+nano shared/.env
 ```
+
+> **Note:** Some older services in this repo still have `.env` symlinks from before this was implemented. They are harmless and can be left in place or removed — they are no longer required.
 
 ### 3. Generate TLS certificates
 
 ```bash
-chmod +x scripts/gen-certs.sh scripts/manage.sh scripts/backup.sh scripts/restore.sh
+chmod +x scripts/gen-certs.sh scripts/manage.sh scripts/backup.sh scripts/restore.sh scripts/kiwix-pull.sh
 ./scripts/gen-certs.sh
 ```
 
@@ -198,6 +197,11 @@ homelab/
 │       ├── config/               # Extensions, settings (gitignored)
 │       └── projects/             # Your code
 │
+│   └── kiwix/                        # Offline reference library server
+│       ├── compose.yml
+│       ├── data/                 # .zim files (gitignored)
+│       └── .tmp/                 # In-progress downloads (gitignored)
+│
 ├── apps/                         # Miscellaneous standalone apps
 │   └── honeygain/
 │       ├── compose.yml
@@ -213,7 +217,8 @@ homelab/
 │   ├── services.dep              # Dependency declarations for boot order
 │   ├── backup.sh                 # Backup automation
 │   ├── restore.sh                # Restore automation
-│   └── gen-certs.sh              # Local CA + wildcard cert generator
+│   ├── gen-certs.sh              # Local CA + wildcard cert generator
+│   └── kiwix-pull.sh             # ZIM file downloader for Kiwix
 │
 ├── backups/                      # Backup archives — GITIGNORED
 ├── Makefile                      # Single entry point for all operations
@@ -227,13 +232,14 @@ homelab/
 | Service | URL | Purpose |
 |---------|-----|---------|
 | **Traefik** | — | Reverse proxy, automatic HTTPS termination |
-| **AdGuard Home** | Tailscale IP of `ts-dns` | Network-wide ad blocking, custom DNS rewrites |
+| **AdGuard Home** | `https://adguard.homeserver.com` | Network-wide ad blocking, custom DNS rewrites |
 | **Portainer** | `https://portainer.homeserver.com` | Docker management UI |
 | **Watchtower** | — | Automatic container image updates |
 | **Copyparty** | `https://copyparty.homeserver.com` | File manager with WebDAV, resumable uploads |
 | **Ollama** | `https://ollama.homeserver.com` | Local LLM inference API |
 | **Open WebUI** | `https://ai.homeserver.com` | ChatGPT-style UI backed by Ollama |
 | **VS Code** | `https://vscode.homeserver.com` | Browser-based IDE |
+| **Kiwix** | `https://kiwix.homeserver.com` | Offline Wikipedia, DevDocs, and reference libraries |
 | **Honeygain** | — | Passive income via bandwidth sharing |
 | **Tailscale VPN** | — | Host-level VPN node for SSH access |
 
@@ -285,11 +291,21 @@ echo "myapp -> mydb" >> ~/homelab/scripts/services.dep
 
 **Service that needs secrets:**
 
-```bash
-ln -s /home/meshwa/homelab/shared/.env ~/homelab/services/myapp/.env
+Reference them directly in `environment:` using `${VAR}` syntax, then add the variable to `shared/.env`:
+
+```yaml
+services:
+  myapp:
+    environment:
+      - API_KEY=${MYAPP_API_KEY}
+      - PASSWORD=${MYAPP_PASSWORD}
 ```
 
-Then add `env_file: .env` to the compose service definition.
+```bash
+echo "MYAPP_API_KEY=abc123" >> ~/homelab/shared/.env
+```
+
+No symlink, no `env_file:` needed — `manage.sh` handles it automatically.
 
 **Add to `.gitignore`** if the service creates runtime data:
 
@@ -359,6 +375,54 @@ make dns                 # Starts vpn first (dep), then dns
 > **Reverse-proxy awareness:** Some services need to be told they are behind a proxy or they will reject forwarded requests. Copyparty, for example, requires `--rproxy -1 --xff-src lan` in its `command:` block. Check your service's documentation for equivalent settings if you see CORS or IP-forwarding errors in its logs.
 
 > **Note:** `make <service>-restart` uses `--force-recreate` — it fully applies any compose file changes. Always use this after editing a compose file, never plain `docker compose restart`.
+
+---
+
+### Manage Kiwix
+
+Kiwix serves offline `.zim` files — self-contained archives of websites like Wikipedia, DevDocs, and Stack Overflow. Use `kiwix-pull.sh` to download and manage them.
+
+```bash
+# See all available categories
+make kiwix-list
+
+# Browse files in a category (shows all files, all dates)
+make kiwix-pull ARGS="--browse devdocs"
+
+# Browse filtered by language
+make kiwix-pull ARGS="--browse wikipedia --lang fr"
+
+# Preview what would be downloaded (latest English per series)
+make kiwix-pull ARGS="--dry-run devdocs"
+
+# Download latest English files in a category
+make kiwix-pull ARGS="devdocs"
+
+# Download in a specific language
+make kiwix-pull ARGS="--lang de wikipedia"
+
+# Download all languages
+make kiwix-pull ARGS="--all-lang freecodecamp"
+
+# Download one exact file by name
+make kiwix-pull ARGS="--file wikipedia_en_all_2026-02.zim wikipedia"
+
+# Download one exact file by full URL (paste directly from browser)
+make kiwix-pull ARGS="--file https://download.kiwix.org/zim/other/archlinux_en_all_maxi_2025-09.zim"
+
+# Multiple categories at once
+make kiwix-pull ARGS="devdocs freecodecamp stack_exchange"
+```
+
+**Resume support:** Downloads use a `.tmp` staging file. If interrupted with Ctrl+C, the partial file is kept and the next run resumes from where it left off. On completion the file is atomically moved to `data/` so Kiwix never sees a partial archive.
+
+**Auto-cleanup of old versions:** When a newer version of a file is downloaded, the previous version is automatically removed.
+
+After adding new `.zim` files, restart Kiwix to load them:
+
+```bash
+make kiwix-restart
+```
 
 ---
 
@@ -489,6 +553,8 @@ Settings → Security → Install certificate → CA certificate → select `ca.
 | `make <svc>-pull` | Pull latest image without restarting |
 | `make <svc>-remove` | Stop and remove containers, keep files on disk |
 | `make <svc>-delete` | Remove containers and delete the entire service directory |
+| `make kiwix-list` | List all available ZIM categories on the Kiwix server |
+| `make kiwix-pull ARGS="..."` | Download ZIM files (see Manage Kiwix below) |
 
 ---
 
@@ -501,6 +567,7 @@ Dependencies are declared in `scripts/services.dep`:
 ```
 # Format: service -> dep1 dep2
 dns        -> vpn
+traefik    -> vpn
 open-webui -> ollama
 ```
 
@@ -519,6 +586,14 @@ Boot order is derived automatically via topological sort (Kahn's algorithm). Ser
 
 **The `proxy` network must exist before starting any service.** Create it with `make network`. It is created automatically when running `make up`.
 
+**All containers use external DNS.** The host `/etc/docker/daemon.json` is configured with `8.8.8.8` and `1.1.1.1` as default resolvers so containers can reach the internet regardless of which Docker network they are on. This is required because the host's `/etc/resolv.conf` points to AdGuard via Tailscale, which is unreachable from inside Docker networks.
+
+```json
+{
+  "dns": ["8.8.8.8", "1.1.1.1"]
+}
+```
+
 ---
 
 ### Secrets and Environment Variables
@@ -531,21 +606,28 @@ shared/
 └── .env.example   ← template with placeholder values (committed)
 ```
 
-Services access secrets via a local symlink:
+The `manage.sh` script passes `--env-file shared/.env` to every `docker compose` invocation. This means any `${VAR}` in any compose file is automatically resolved from `shared/.env` — no symlinks, no `env_file:` directives needed.
 
-```
-apps/honeygain/.env     -> ../../shared/.env
-core/dns/.env           -> ../../shared/.env
-core/traefik/.env       -> ../../shared/.env
-...
-```
-
-Each compose file then uses:
+**Adding secrets to a new service:**
 
 ```yaml
-env_file:
-  - .env
+# In your compose.yml — reference vars directly, no env_file needed
+services:
+  myapp:
+    environment:
+      - MY_API_KEY=${MY_API_KEY}
+      - MY_PASSWORD=${MY_PASSWORD}
 ```
+
+```bash
+# Add the vars to shared/.env
+echo "MY_API_KEY=abc123" >> shared/.env
+echo "MY_PASSWORD=hunter2" >> shared/.env
+```
+
+That's it. No symlink, no `env_file:` block.
+
+> **Legacy symlinks:** Some services have `.env -> ../../shared/.env` symlinks from before `--env-file` was implemented. These are harmless but redundant — `**/.env` in `.gitignore` ensures they are never committed.
 
 **Required variables:**
 
@@ -577,6 +659,8 @@ env_file:
 - All `*-state/` directories — Tailscale private keys
 - `core/traefik/certs/` — private keys and certificates
 - `services/ollama/runtime/` — model weights
+- `services/kiwix/data/` — ZIM files (large, not version-controlled)
+- `services/kiwix/.tmp/` — in-progress downloads
 - `backups/*.tar.gz` — backup archives
 
 **Before every commit:**

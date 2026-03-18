@@ -20,6 +20,10 @@ shared/.env
 **/config/
 **/runtime/
 **/models/
+**/db/
+**/library/
+**/redis-data/
+**/resources/
 
 # Logs
 *.log
@@ -36,3 +40,7 @@ apple-music-downloader/
 **/rootfs/
 *.so
 *.zip
+
+# Kiwix
+**/*.tmp
+**/*.zim

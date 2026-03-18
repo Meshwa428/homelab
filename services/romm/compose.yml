@@ -1,0 +1,59 @@
+services:
+  romm-db:
+    image: mariadb:latest
+    container_name: romm-db
+    restart: unless-stopped
+    environment:
+      - MARIADB_ROOT_PASSWORD=${ROMM_DB_ROOT_PASSWORD}
+      - MARIADB_DATABASE=romm
+      - MARIADB_USER=romm-user
+      - MARIADB_PASSWORD=${ROMM_DB_PASSWORD}
+    volumes:
+      - ./db:/var/lib/mysql
+    healthcheck:
+      test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+      start_period: 30s
+      start_interval: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [proxy]
+
+  romm:
+    image: rommapp/romm:latest
+    container_name: romm
+    restart: unless-stopped
+    environment:
+      - DB_HOST=romm-db
+      - DB_NAME=romm
+      - DB_USER=romm-user
+      - DB_PASSWD=${ROMM_DB_PASSWORD}
+      - ROMM_AUTH_SECRET_KEY=${ROMM_AUTH_SECRET_KEY}
+      - SCREENSCRAPER_USER=${ROMM_SCREENSCRAPER_USER}
+      - SCREENSCRAPER_PASSWORD=${ROMM_SCREENSCRAPER_PASSWORD}
+      - RETROACHIEVEMENTS_API_KEY=${ROMM_RETROACHIEVEMENTS_API_KEY}
+      - STEAMGRIDDB_API_KEY=${ROMM_STEAMGRIDDB_API_KEY}
+      - HASHEOUS_API_ENABLED=true
+    volumes:
+      - ./resources:/romm/resources   # Covers, screenshots fetched from providers
+      - ./redis-data:/redis-data       # Background task cache
+      - ./library:/romm/library        # Your ROM library
+      - ./assets:/romm/assets          # Saves, states, screenshots
+      - ./config:/romm/config          # config.yml
+    depends_on:
+      romm-db:
+        condition: service_healthy
+        restart: true
+    networks: [proxy]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.romm.rule=Host(`romm.homeserver.com`)"
+      - "traefik.http.routers.romm.entrypoints=websecure"
+      - "traefik.http.routers.romm.tls=true"
+      - "traefik.http.services.romm.loadbalancer.server.port=8080"
+      - "traefik.docker.network=proxy"
+
+networks:
+  proxy:
+    external: true
+    name: proxy

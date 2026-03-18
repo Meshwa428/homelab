@@ -193,7 +193,7 @@ _init() {
 
 _compose() {
   local service="$1"; shift
-  docker compose -f "$HOMELAB_DIR/${SERVICES[$service]}" "$@"
+  docker compose     --env-file "$HOMELAB_DIR/shared/.env"     -f "$HOMELAB_DIR/${SERVICES[$service]}"     "$@"
 }
 
 _validate() {
@@ -218,13 +218,13 @@ _health() {
   local compose_file="$HOMELAB_DIR/${SERVICES[$service]}"
 
   local expected
-  expected=$(docker compose -f "$compose_file" config --services 2>/dev/null | wc -l)
+  expected=$(docker compose --env-file "$HOMELAB_DIR/shared/.env" -f "$compose_file" config --services 2>/dev/null | wc -l)
 
   local running
-  running=$(docker compose -f "$compose_file" ps --status running -q 2>/dev/null | wc -l)
+  running=$(docker compose --env-file "$HOMELAB_DIR/shared/.env" -f "$compose_file" ps --status running -q 2>/dev/null | wc -l)
 
   local total
-  total=$(docker compose -f "$compose_file" ps -a -q 2>/dev/null | wc -l)
+  total=$(docker compose --env-file "$HOMELAB_DIR/shared/.env" -f "$compose_file" ps -a -q 2>/dev/null | wc -l)
 
   if   [[ "$total"   -eq 0 ]];                         then echo "missing"
   elif [[ "$running" -eq "$expected" && "$expected" -gt 0 ]]; then echo "running"
@@ -287,6 +287,8 @@ _start_service() {
       ;;
 
     missing)
+      step "pulling images for $s..."
+      _compose "$s" pull 2>&1 | sed 's/^/     /' || true
       step "creating $s..."
       _compose "$s" up -d 2>&1 | grep -E "Started|Running|Created|Warning|Error" | sed 's/^/     /' || true
       info "$s started"
@@ -429,16 +431,47 @@ cmd_delete() {
 cmd_status() {
   header "Homelab Status"
 
+  # Fetch all container states in one docker ps call
+  declare -A container_states
+  while IFS='|' read -r name state; do
+    [[ -n "$name" ]] && container_states["$name"]="$state"
+  done < <(docker ps -a --format "{{.Names}}|{{.State}}" 2>/dev/null)
+
   printf "  ${BOLD}%-22s %-12s %s${NC}\n" "SERVICE" "HEALTH" "CONTAINERS"
   printf "  ${DIM}%-22s %-12s %s${NC}\n"  "───────────────────" "──────────" "──────────────────────────────"
 
   local all_healthy=true
+  local output=""
 
   for s in "${BOOT_ORDER[@]}"; do
-    local health
-    health=$(_health "$s")
+    # Get expected container names for this service from compose config
+    local expected_names
+    expected_names=$(docker compose --env-file "$HOMELAB_DIR/shared/.env"       -f "$HOMELAB_DIR/${SERVICES[$s]}" config --format json 2>/dev/null       | grep -oP '"container_name":\s*"\K[^"]+' || true)
 
-    local color label
+    # Fall back to compose ps if config parsing fails
+    if [[ -z "$expected_names" ]]; then
+      expected_names=$(docker compose --env-file "$HOMELAB_DIR/shared/.env"         -f "$HOMELAB_DIR/${SERVICES[$s]}" ps -a --format "{{.Name}}" 2>/dev/null || true)
+    fi
+
+    local running=0 total=0 container_list=""
+    while IFS= read -r cname; do
+      [[ -z "$cname" ]] && continue
+      (( total++ )) || true
+      local state="${container_states[$cname]:-missing}"
+      [[ "$state" == "running" ]] && (( running++ )) || true
+      container_list+="${cname}(${state})  "
+    done <<< "$expected_names"
+
+    container_list="${container_list%  }"
+    [[ -z "$container_list" ]] && container_list="${DIM}none${NC}"
+
+    local health color label
+    if   [[ $total -eq 0 ]];                    then health="missing"
+    elif [[ $running -eq $total ]];             then health="running"
+    elif [[ $running -eq 0 && $total -gt 0 ]];  then health="exited"
+    else                                              health="partial"
+    fi
+
     case "$health" in
       running)  color="$GREEN";  label="● running"  ;;
       partial)  color="$YELLOW"; label="◑ partial"  ; all_healthy=false ;;
@@ -446,16 +479,11 @@ cmd_status() {
       missing)  color="$YELLOW"; label="- missing"  ; all_healthy=false ;;
     esac
 
-    local containers
-    containers=$(
-      docker compose -f "$HOMELAB_DIR/${SERVICES[$s]}" ps -a \
-        --format "{{.Name}}({{.State}})" 2>/dev/null \
-        | tr '\n' '  ' | sed 's/  $//'
-    )
-    [[ -z "$containers" ]] && containers="${DIM}none${NC}"
-
-    printf "  %-22s ${color}%-12s${NC} %b\n" "$s" "$label" "$containers"
+    output+=$(printf "  %-22s ${color}%-12s${NC} %b\n" "$s" "$label" "$container_list")
+    output+=$'\n'
   done
+
+  printf "%b" "$output"
 
   echo ""
   if $all_healthy; then

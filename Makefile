@@ -42,7 +42,32 @@ $(1)-delete:
 	@./scripts/manage.sh delete $(1)
 endef
 
-$(foreach svc,$(SERVICES),$(eval $(call service_targets,$(svc))))
+MANAGED_SERVICES := $(filter-out kiwix,$(SERVICES))
+$(foreach svc,$(MANAGED_SERVICES),$(eval $(call service_targets,$(svc))))
+
+# --- Kiwix -------------------------------------------------------------------
+.PHONY: kiwix kiwix-down kiwix-restart kiwix-logs kiwix-pull-img kiwix-remove kiwix-delete kiwix-list kiwix-pull
+
+kiwix:
+	@./scripts/manage.sh up kiwix
+kiwix-down:
+	@./scripts/manage.sh down kiwix
+kiwix-restart:
+	@./scripts/manage.sh restart kiwix
+kiwix-logs:
+	@./scripts/manage.sh logs kiwix -f
+kiwix-pull-img:
+	@./scripts/manage.sh pull kiwix
+kiwix-remove:
+	@./scripts/manage.sh remove kiwix
+kiwix-delete:
+	@./scripts/manage.sh delete kiwix
+kiwix-list:
+	@./scripts/kiwix-pull.sh --list
+
+# Usage: make kiwix-pull ARGS="devdocs freecodecamp --dry-run"
+kiwix-pull:
+	@./scripts/kiwix-pull.sh $(ARGS)
 
 # --- Global commands ---------------------------------------------------------
 .PHONY: up down heal status list help network
