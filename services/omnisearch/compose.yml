@@ -1,0 +1,22 @@
+services:
+  omnisearch:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./locales:/app/locales
+      - ./example-config.ini:/etc/omnisearch/config.ini
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.omnisearch.rule=Host(`omnisearch.homeserver.com`)"
+      - "traefik.http.routers.omnisearch.entrypoints=websecure"
+      - "traefik.http.routers.omnisearch.tls=true"
+      - "traefik.http.services.omnisearch.loadbalancer.server.port=5000"
+      - "traefik.docker.network=proxy"
+
+networks:
+  proxy:
+    external: true
+    name: proxy
