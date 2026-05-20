@@ -25,6 +25,12 @@ shared/.env
 **/redis-data/
 **/resources/
 
+# RomM MariaDB runtime data (root-owned, not portable)
+services/romm/db/
+services/romm/redis-data/
+services/romm/library/
+services/romm/resources/
+
 # Logs
 *.log
 *.log1.txt
