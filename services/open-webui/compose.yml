@@ -5,6 +5,10 @@ services:
     restart: always
     env_file:
       - .env
+    environment:
+      - OPENAI_API_BASE_URL=http://llama-swap:8080/v1
+      - OPENAI_API_KEY=llama-swap
+      - ENABLE_OLLAMA_API=false
     volumes:
       - ./data:/app/backend/data
     networks:

@@ -38,10 +38,10 @@ declare -A SERVICES=(
   [reverse-proxy]="core/reverse-proxy/compose.yml|core/reverse-proxy/data core/reverse-proxy/letsencrypt core/reverse-proxy/ts-proxy-state"
   [vpn]="core/vpn/compose.yml|core/vpn/state"
   [portainer]="core/management/portainer/compose.yml|core/management/portainer/data"
-  [watchtower]="core/management/watchtower/compose.yml|"
+  [wud]="core/management/wud/compose.yml|"
   [filebrowser]="services/filebrowser/compose.yml|services/filebrowser/config services/filebrowser/data"
   [vscode]="services/vscode/compose.yml|services/vscode/config services/vscode/projects"
-  [ollama]="services/ollama/compose.yml|services/ollama/runtime"
+  [llama-swap]="services/llama-swap/compose.yml|services/llama-swap/models services/llama-swap/config.yaml"
   [open-webui]="services/open-webui/compose.yml|"
   [honeygain]="apps/honeygain/compose.yml|"
 )
@@ -80,7 +80,9 @@ backup_docker_volume() {
   local dest="$BACKUP_TARGET/docker-volumes/$volume"
   mkdir -p "$dest"
   if docker volume inspect "$volume" &>/dev/null; then
+    docker rm -f "homelab-backup-${volume}" >/dev/null 2>&1 || true
     docker run --rm \
+      --name "homelab-backup-${volume}" \
       -v "$volume":/source:ro \
       -v "$dest":/dest \
       alpine sh -c "cp -r /source/. /dest/" 2>>"$LOG_FILE"

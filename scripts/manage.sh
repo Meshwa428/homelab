@@ -597,11 +597,8 @@ ${BOLD}ADDING A SERVICE${NC}
 ${BOLD}EXAMPLES${NC}
   make up
   make down
-  make ollama
-  make ollama-down
-  make ollama-restart
-  make ollama-logs
-  make open-webui          # starts ollama first (dep), then open-webui
+  make llama-swap          # starts llama-swap
+  make open-webui          # starts llama-swap first (dep), then open-webui
   make dns                 # starts vpn first (dep), then dns
   make status
   make heal

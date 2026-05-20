@@ -26,4 +26,4 @@
 
 dns        -> vpn
 traefik    -> vpn
-open-webui -> ollama
+open-webui -> llama-swap

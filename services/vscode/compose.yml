@@ -1,5 +1,15 @@
 services:
+  code-server-init:
+    image: alpine
+    user: root
+    volumes:
+      - ./data:/home/coder/.local/share/code-server
+    command: chown -R 1000:1000 /home/coder/.local/share/code-server
+
   code-server:
+    depends_on:
+      code-server-init:
+        condition: service_completed_successfully
     image: codercom/code-server:latest
     container_name: code-server
     restart: unless-stopped
@@ -9,8 +19,9 @@ services:
       - DOCKER_USER=meshwa
     user: "1000:1000"
     volumes:
-      - ./projects:/home/coder/projects
+      - /home/meshwa:/home/coder/projects
       - ./config:/home/coder/.config
+      - ./data:/home/coder/.local/share/code-server
     networks:
       - proxy
     tty: true

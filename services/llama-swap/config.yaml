@@ -1,0 +1,29 @@
+# =============================================================================
+# llama-swap — Configuration File
+# =============================================================================
+# Models are registered here and loaded on-demand when a request comes in.
+# Idle models are automatically unloaded after ttl seconds.
+#
+# To add a new model, run:
+#   ./scripts/hf-pull.sh <hf-repo-id> [filename-pattern] [model-key]
+#
+# Example:
+#   ./scripts/hf-pull.sh bartowski/Mistral-7B-Instruct-v0.3-GGUF "*Q5_K_M.gguf" mistral
+# =============================================================================
+
+models:
+  # Add models here via ./scripts/hf-pull.sh
+  # Example entry (uncomment and edit to enable):
+  #
+  # mistral:
+  #   cmd: "llama-server --port ${PORT} --model /models/mistral-7b-instruct-v0.3-q5_k_m.gguf -c 2048 --threads 4"
+  #   proxy: "http://127.0.0.1:${PORT}"
+  #   ttl: 300
+  "openbmb/MiniCPM-V-4.6-Thinking-gguf:q4_k_m":
+    cmd: "llama-server --port ${PORT} --model /models/openbmb/MiniCPM-V-4.6-Thinking-gguf/MiniCPM-V-4_6-Thinking-Q4_K_M.gguf -c 2048 --threads 4"
+    proxy: "http://127.0.0.1:${PORT}"
+    ttl: 300
+  "unsloth/Qwen3.5-0.8B-GGUF:q8_0":
+    cmd: "llama-server --port ${PORT} --model /models/unsloth/Qwen3.5-0.8B-GGUF/Qwen3.5-0.8B-Q8_0.gguf -c 2048 --threads 4"
+    proxy: "http://127.0.0.1:${PORT}"
+    ttl: 300

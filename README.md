@@ -2,7 +2,7 @@
 
 A self-hosted, Docker-based homelab running on Debian — structured, automated, and built for easy recovery.
 
-> **Stack:** Docker Compose · Traefik · Tailscale · AdGuard Home · Makefile automation
+> **Stack:** Docker Compose · Traefik · Tailscale · AdGuard Home · Lab CLI automation
 
 ---
 
@@ -14,14 +14,13 @@ A self-hosted, Docker-based homelab running on Debian — structured, automated,
 - [Project Structure](#project-structure)
 - [Services](#services)
 - [How-To Guides](#how-to-guides)
-  - [Add a New Service](#add-a-new-service)
-  - [Manage Services with Make](#manage-services-with-make)
-  - [Backup and Restore](#backup-and-restore)
-  - [Rotate Secrets](#rotate-secrets)
-  - [Generate or Renew TLS Certificates](#generate-or-renew-tls-certificates)
-  - [Trust the Local CA on a Device](#trust-the-local-ca-on-a-device)
+- [Manage Services with the Lab CLI](#manage-services-with-the-lab-cli)
+- [Backup and Restore](#backup-and-restore)
+- [Rotate Secrets](#rotate-secrets)
+- [Generate or Renew TLS Certificates](#generate-or-renew-tls-certificates)
+- [Trust the Local CA on a Device](#trust-the-local-ca-on-a-device)
 - [Reference](#reference)
-  - [Make Targets](#make-targets)
+  - [Lab CLI Commands](#lab-cli-commands)
   - [Service Registry](#service-registry)
   - [Networking](#networking)
   - [Secrets and Environment Variables](#secrets-and-environment-variables)
@@ -41,7 +40,7 @@ This repository contains the complete configuration for a personal homelab. Ever
 - **Configuration is version-controlled.** All `compose.yml` files, scripts, and config templates live here.
 - **Secrets are never committed.** A single `shared/.env` file holds all credentials, gitignored by default.
 - **Data is recoverable.** Bind mounts make all runtime data visible, inspectable, and easy to back up.
-- **Operations are automated.** A single `Makefile` entry point handles starting, stopping, healing, and inspecting all services.
+- **Operations are automated.** A single unified `./lab` CLI tool handles starting, stopping, healing, inspecting, and managing AI models.
 
 ---
 
@@ -64,10 +63,8 @@ This repository contains the complete configuration for a personal homelab. Ever
     │  │portainer │  │
     │  │open-webui│  │
     │  │ vscode   │  │
-    │  │ ollama   │  │
+    │  │llama-swap│  │
     │  │copyparty │  │
-    │  │  kiwix   │  │
-    │  │ adguard  │  │
     │  └──────────┘  │
     └────────────────┘
 ```
@@ -87,7 +84,7 @@ This repository contains the complete configuration for a personal homelab. Ever
 ### Prerequisites
 
 - Debian/Ubuntu server with Docker and Docker Compose installed
-- `make` and `openssl` available
+- `openssl` available
 - A Tailscale account with an auth key
 
 ### 1. Clone and configure secrets
@@ -99,20 +96,23 @@ cp shared/.env.example shared/.env
 nano shared/.env    # fill in all values
 ```
 
-### 2. Configure secrets
+### 2. Create symlinks for services that need secrets
 
-Fill in your values in `shared/.env`. The management scripts automatically pass this file to every `docker compose` call via `--env-file`, so all `${VAR}` references in any compose file are resolved from a single source — no per-service symlinks needed.
+Each service that reads `shared/.env` needs a local symlink so Docker Compose can find it:
 
 ```bash
-nano shared/.env
+ln -s /home/meshwa/homelab/shared/.env core/dns/.env
+ln -s /home/meshwa/homelab/shared/.env core/vpn/.env
+ln -s /home/meshwa/homelab/shared/.env core/traefik/.env
+ln -s /home/meshwa/homelab/shared/.env services/vscode/.env
+ln -s /home/meshwa/homelab/shared/.env services/open-webui/.env
+ln -s /home/meshwa/homelab/shared/.env apps/honeygain/.env
 ```
-
-> **Note:** Some older services in this repo still have `.env` symlinks from before this was implemented. They are harmless and can be left in place or removed — they are no longer required.
 
 ### 3. Generate TLS certificates
 
 ```bash
-chmod +x scripts/gen-certs.sh scripts/manage.sh scripts/backup.sh scripts/restore.sh scripts/kiwix-pull.sh
+chmod +x lab scripts/hf-pull.sh scripts/gen-certs.sh scripts/manage.sh scripts/backup.sh scripts/restore.sh
 ./scripts/gen-certs.sh
 ```
 
@@ -121,7 +121,7 @@ Trust `core/traefik/certs/ca.crt` on each device — see [Trust the Local CA on 
 ### 4. Create the shared Docker network
 
 ```bash
-make network
+./lab network
 ```
 
 ### 5. Configure AdGuard DNS rewrite
@@ -137,7 +137,7 @@ Get the Traefik Tailscale IP after step 6 from the Tailscale admin dashboard.
 ### 6. Start everything
 
 ```bash
-make up
+./lab up
 ```
 
 ---
@@ -174,7 +174,7 @@ homelab/
 │       ├── portainer/            # Docker management UI
 │       │   ├── compose.yml
 │       │   └── data/             # Portainer DB, certs (root-owned, gitignored)
-│       └── watchtower/           # Automatic image updates
+│       └── wud/                  # What's Up Docker (automatic image updates)
 │           └── compose.yml
 │
 ├── services/                     # Personal productivity and AI tools
@@ -182,11 +182,12 @@ homelab/
 │   │   ├── compose.yml
 │   │   └── config/               # copyparty.conf + hists/ (gitignored)
 │   │
-│   ├── ollama/                   # Local LLM inference engine
+│   ├── llama-swap/               # Local LLM model proxy router
 │   │   ├── compose.yml
-│   │   └── runtime/              # Model weights — many GBs (gitignored)
+│   │   ├── config.yaml           # Model registries & routing rules
+│   │   └── models/               # Flat folder of GGUF files (gitignored)
 │   │
-│   ├── open-webui/               # ChatGPT-style UI for Ollama
+│   ├── open-webui/               # ChatGPT-style UI for llama-swap
 │   │   ├── compose.yml
 │   │   ├── .env -> ../../shared/.env
 │   │   └── data/                 # Open WebUI state (gitignored)
@@ -196,11 +197,6 @@ homelab/
 │       ├── .env -> ../../shared/.env
 │       ├── config/               # Extensions, settings (gitignored)
 │       └── projects/             # Your code
-│
-│   └── kiwix/                        # Offline reference library server
-│       ├── compose.yml
-│       ├── data/                 # .zim files (gitignored)
-│       └── .tmp/                 # In-progress downloads (gitignored)
 │
 ├── apps/                         # Miscellaneous standalone apps
 │   └── honeygain/
@@ -213,15 +209,15 @@ homelab/
 │   └── networks.yml              # Reserved for shared network definitions
 │
 ├── scripts/
-│   ├── manage.sh                 # Service manager (called by Makefile)
+│   ├── manage.sh                 # Service manager (called by lab)
 │   ├── services.dep              # Dependency declarations for boot order
 │   ├── backup.sh                 # Backup automation
 │   ├── restore.sh                # Restore automation
 │   ├── gen-certs.sh              # Local CA + wildcard cert generator
-│   └── kiwix-pull.sh             # ZIM file downloader for Kiwix
+│   └── hf-pull.sh                # HuggingFace model downloader script
 │
 ├── backups/                      # Backup archives — GITIGNORED
-├── Makefile                      # Single entry point for all operations
+├── lab                           # Unified CLI entry point for all operations
 └── .gitignore
 ```
 
@@ -232,14 +228,13 @@ homelab/
 | Service | URL | Purpose |
 |---------|-----|---------|
 | **Traefik** | — | Reverse proxy, automatic HTTPS termination |
-| **AdGuard Home** | `https://adguard.homeserver.com` | Network-wide ad blocking, custom DNS rewrites |
+| **AdGuard Home** | Tailscale IP of `ts-dns` | Network-wide ad blocking, custom DNS rewrites |
 | **Portainer** | `https://portainer.homeserver.com` | Docker management UI |
-| **Watchtower** | — | Automatic container image updates |
+| **WUD** | `https://wud.homeserver.com` | What's Up Docker container auto-update utility |
 | **Copyparty** | `https://copyparty.homeserver.com` | File manager with WebDAV, resumable uploads |
-| **Ollama** | `https://ollama.homeserver.com` | Local LLM inference API |
-| **Open WebUI** | `https://ai.homeserver.com` | ChatGPT-style UI backed by Ollama |
+| **llama-swap** | `https://ollama.homeserver.com` | Local LLM inference routing layer |
+| **Open WebUI** | `https://ai.homeserver.com` | ChatGPT-style UI backed by llama-swap |
 | **VS Code** | `https://vscode.homeserver.com` | Browser-based IDE |
-| **Kiwix** | `https://kiwix.homeserver.com` | Offline Wikipedia, DevDocs, and reference libraries |
 | **Honeygain** | — | Passive income via bandwidth sharing |
 | **Tailscale VPN** | — | Host-level VPN node for SSH access |
 
@@ -279,7 +274,7 @@ networks:
 EOF
 
 # 3. Start it — auto-discovered immediately, no config changes needed
-make myapp
+./lab up myapp
 ```
 
 **Service that depends on another** (e.g. an app that needs a database):
@@ -291,21 +286,11 @@ echo "myapp -> mydb" >> ~/homelab/scripts/services.dep
 
 **Service that needs secrets:**
 
-Reference them directly in `environment:` using `${VAR}` syntax, then add the variable to `shared/.env`:
-
-```yaml
-services:
-  myapp:
-    environment:
-      - API_KEY=${MYAPP_API_KEY}
-      - PASSWORD=${MYAPP_PASSWORD}
-```
-
 ```bash
-echo "MYAPP_API_KEY=abc123" >> ~/homelab/shared/.env
+ln -s /home/meshwa/homelab/shared/.env ~/homelab/services/myapp/.env
 ```
 
-No symlink, no `env_file:` needed — `manage.sh` handles it automatically.
+Then add `env_file: .env` to the compose service definition.
 
 **Add to `.gitignore`** if the service creates runtime data:
 
@@ -328,7 +313,7 @@ services/myapp/config/
 **Remove containers but keep files** — useful when you want to stop a service temporarily or reconfigure it before bringing it back:
 
 ```bash
-make reverse-proxy-remove
+./lab remove reverse-proxy
 # Prompts: "Type yes to continue"
 # Result: containers gone, compose/config/data all intact on disk
 ```
@@ -336,104 +321,47 @@ make reverse-proxy-remove
 **Delete a service entirely** — removes containers and the entire service directory from disk. Irreversible:
 
 ```bash
-make reverse-proxy-delete
+./lab delete reverse-proxy
 # Prompts: "Type the service name to confirm: reverse-proxy"
 # Result: containers gone, directory deleted, services.dep entry cleaned up
 ```
 
 The delete command also automatically removes the service's entry from `scripts/services.dep` if one exists, keeping the dependency graph clean. Auto-discovery won't find the service on the next run since there's no `compose.yml` left.
 
-> **Tip:** Run `make backup` before deleting anything with data you might want to recover.
+> **Tip:** Run `./scripts/backup.sh` before deleting anything with data you might want to recover.
 
 ---
 
-### Manage Services with Make
+### Manage Services with the Lab CLI
+
+The `./lab` utility is your unified entry point for all administrative tasks. It provides tab-completion-ready commands, automatic dependencies handling, and complete model pipeline management.
 
 ```bash
-# ── Global ────────────────────────────────────────────────────────────
-make up                  # Start all services in correct boot order
-make down                # Stop all services (prompts for confirmation)
-make status              # Health table for all services
-make heal                # Start any crashed or missing services
-make list                # List all services with deps and boot order
-make network             # Create the shared proxy Docker network
+# ── Global Service Controls ───────────────────────────────────────────
+./lab up                     # Start all services in correct boot order
+./lab down                   # Stop all services (prompts for confirmation)
+./lab status                 # Health table for all services
+./lab heal                   # Start any crashed or missing services
+./lab list                   # List all services with deps and boot order
+./lab network                # Create the shared proxy Docker network
 
-# ── Per service ───────────────────────────────────────────────────────
-make ollama              # Start ollama (starts deps first automatically)
-make ollama-down         # Stop ollama
-make ollama-restart      # Recreate container — fully applies compose changes
-make ollama-logs         # Follow logs (Ctrl+C to exit)
-make ollama-pull         # Pull latest image (does not restart)
-make ollama-remove       # Stop and remove containers, keep files on disk
-make ollama-delete       # Remove containers AND delete the service directory
+# ── Per Service Controls ──────────────────────────────────────────────
+./lab up llama-swap          # Start llama-swap (starts deps first automatically)
+./lab down llama-swap        # Stop llama-swap
+./lab restart llama-swap     # Recreate container — fully applies compose changes
+./lab logs llama-swap        # Follow logs (Ctrl+C to exit)
+./lab pull llama-swap        # Pull latest image (does not restart)
+./lab remove llama-swap      # Stop and remove containers, keep files on disk
+./lab delete llama-swap      # Remove containers AND delete the service directory
 
-# ── Dependency resolution ─────────────────────────────────────────────
-make open-webui          # Starts ollama first (dep), then open-webui
-make dns                 # Starts vpn first (dep), then dns
-```
-
-> **Reverse-proxy awareness:** Some services need to be told they are behind a proxy or they will reject forwarded requests. Copyparty, for example, requires `--rproxy -1 --xff-src lan` in its `command:` block. Check your service's documentation for equivalent settings if you see CORS or IP-forwarding errors in its logs.
-
-> **Note:** `make <service>-restart` uses `--force-recreate` — it fully applies any compose file changes. Always use this after editing a compose file, never plain `docker compose restart`.
-
----
-
-### Manage Kiwix
-
-Kiwix serves offline `.zim` files — self-contained archives of websites like Wikipedia, DevDocs, and Stack Overflow. Use `kiwix-pull.sh` to download and manage them.
-
-```bash
-# See all available categories
-make kiwix-list
-
-# Browse files in a category (shows all files, all dates)
-make kiwix-pull ARGS="--browse devdocs"
-
-# Browse filtered by language
-make kiwix-pull ARGS="--browse wikipedia --lang fr"
-
-# Preview what would be downloaded (latest English per series)
-make kiwix-pull ARGS="--dry-run devdocs"
-
-# Download latest English files in a category
-make kiwix-pull ARGS="devdocs"
-
-# Download in a specific language
-make kiwix-pull ARGS="--lang de wikipedia"
-
-# Download all languages
-make kiwix-pull ARGS="--all-lang freecodecamp"
-
-# Download one exact file by name
-make kiwix-pull ARGS="--file wikipedia_en_all_2026-02.zim wikipedia"
-
-# Download one exact file by full URL (paste directly from browser)
-make kiwix-pull ARGS="--file https://download.kiwix.org/zim/other/archlinux_en_all_maxi_2025-09.zim"
-
-# Multiple categories at once
-make kiwix-pull ARGS="devdocs freecodecamp stack_exchange"
-```
-
-**Resume support:** Downloads use a `.tmp` staging file. If interrupted with Ctrl+C, the partial file is kept and the next run resumes from where it left off. On completion the file is atomically moved to `data/` so Kiwix never sees a partial archive.
-
-**Auto-cleanup of old versions:** When a newer version of a file is downloaded, the previous version is automatically removed.
-
-After adding new `.zim` files, restart Kiwix to load them:
-
-```bash
-make kiwix-restart
-```
-
----
-
-### Backup and Restore
+# ── Model Pipeline Management ──────────────────────────�### Backup and Restore
 
 ```bash
 # Full backup of all services
 ./scripts/backup.sh
 
 # Backup a single service
-./scripts/backup.sh ollama
+./scripts/backup.sh llama-swap
 ./scripts/backup.sh portainer
 
 # Skip stopping containers (faster, slight risk of partial writes)
@@ -446,7 +374,7 @@ make kiwix-restart
 ./scripts/restore.sh backups/2026-03-03_15-30-58.tar.gz
 
 # Restore a single service only
-./scripts/restore.sh backups/2026-03-03_15-30-58.tar.gz ollama
+./scripts/restore.sh backups/2026-03-03_15-30-58.tar.gz llama-swap
 ```
 
 **Automate with cron** — full backup every night at 2am:
@@ -474,9 +402,9 @@ sudo rm -rf core/dns/ts-dns-state/*
 sudo rm -rf core/traefik/ts-traefik-state/*
 sudo rm -rf core/vpn/state/*
 
-make dns-restart
-make traefik-restart
-make vpn-restart
+./lab restart dns
+./lab restart traefik
+./lab restart vpn
 ```
 
 **Any other secret** (passwords, API keys):
@@ -484,7 +412,7 @@ make vpn-restart
 ```bash
 nano ~/homelab/shared/.env
 # Restart the affected service to pick up the change:
-make <service>-restart
+./lab restart <service>
 ```
 
 ---
@@ -495,7 +423,7 @@ The wildcard cert is valid for ~2 years. Regenerate it before it expires:
 
 ```bash
 ./scripts/gen-certs.sh
-make traefik-restart
+./lab restart traefik
 ```
 
 Check expiry at any time:
@@ -535,26 +463,29 @@ Settings → Security → Install certificate → CA certificate → select `ca.
 
 ## Reference
 
-### Make Targets
+### Lab CLI Commands
 
-| Target | Description |
-|--------|-------------|
-| `make up` | Start all services in boot order |
-| `make down` | Stop all services (confirmation required) |
-| `make status` | Health table: running / partial / exited / missing |
-| `make heal` | Start any stopped or missing services |
-| `make list` | All services with compose path and dependencies |
-| `make network` | Create the shared `proxy` Docker network |
-| `make help` | Full usage reference |
-| `make <svc>` | Start a service (resolves deps automatically) |
-| `make <svc>-down` | Stop a service |
-| `make <svc>-restart` | Recreate container — fully applies compose changes |
-| `make <svc>-logs` | Follow logs |
-| `make <svc>-pull` | Pull latest image without restarting |
-| `make <svc>-remove` | Stop and remove containers, keep files on disk |
-| `make <svc>-delete` | Remove containers and delete the entire service directory |
-| `make kiwix-list` | List all available ZIM categories on the Kiwix server |
-| `make kiwix-pull ARGS="..."` | Download ZIM files (see Manage Kiwix below) |
+| Command | Description |
+|---------|-------------|
+| `./lab up` | Start all services in boot order |
+| `./lab down` | Stop all services (confirmation required) |
+| `./lab status` | Health table: running / partial / exited / missing |
+| `./lab heal` | Start any stopped or missing services |
+| `./lab list` | All services with compose path and dependencies |
+| `./lab network` | Create the shared `proxy` Docker network |
+| `./lab help` | Full usage reference |
+| `./lab up <svc>` | Start a service (resolves deps automatically) |
+| `./lab down <svc>` | Stop a service |
+| `./lab restart <svc>` | Recreate container — fully applies compose changes |
+| `./lab logs <svc>` | Follow logs |
+| `./lab pull <svc>` | Pull latest image without restarting |
+| `./lab remove <svc>` | Stop and remove containers, keep files on disk |
+| `./lab delete <svc>` | Remove containers and delete the entire service directory |
+| `./lab model remote <r>` | List all available quants in remote HuggingFace repo |
+| `./lab model pull <r>` | Download & register model from HuggingFace |
+| `./lab model list` | List registered models in llama-swap |
+| `./lab model files` | List downloaded local GGUF models on disk |
+| `./lab model remove <k>`| Remove a model from config (and optionally disk) |
 
 ---
 
@@ -567,8 +498,7 @@ Dependencies are declared in `scripts/services.dep`:
 ```
 # Format: service -> dep1 dep2
 dns        -> vpn
-traefik    -> vpn
-open-webui -> ollama
+open-webui -> llama-swap
 ```
 
 Boot order is derived automatically via topological sort (Kahn's algorithm). Services with no dependencies run alphabetically. Circular dependencies are detected and reported before anything starts.
@@ -584,15 +514,7 @@ Boot order is derived automatically via topological sort (Kahn's algorithm). Ser
 | Host network | `network_mode: host` | Used by `tailscale` (VPN) for direct host access |
 | Sidecar namespace | `network_mode: service:ts-*` | Used by Traefik and AdGuard to share their Tailscale node's IP |
 
-**The `proxy` network must exist before starting any service.** Create it with `make network`. It is created automatically when running `make up`.
-
-**All containers use external DNS.** The host `/etc/docker/daemon.json` is configured with `8.8.8.8` and `1.1.1.1` as default resolvers so containers can reach the internet regardless of which Docker network they are on. This is required because the host's `/etc/resolv.conf` points to AdGuard via Tailscale, which is unreachable from inside Docker networks.
-
-```json
-{
-  "dns": ["8.8.8.8", "1.1.1.1"]
-}
-```
+**The `proxy` network must exist before starting any service.** Create it with `./lab network`. It is created automatically when running `./lab up`.
 
 ---
 
@@ -606,28 +528,21 @@ shared/
 └── .env.example   ← template with placeholder values (committed)
 ```
 
-The `manage.sh` script passes `--env-file shared/.env` to every `docker compose` invocation. This means any `${VAR}` in any compose file is automatically resolved from `shared/.env` — no symlinks, no `env_file:` directives needed.
+Services access secrets via a local symlink:
 
-**Adding secrets to a new service:**
+```
+apps/honeygain/.env     -> ../../shared/.env
+core/dns/.env           -> ../../shared/.env
+core/traefik/.env       -> ../../shared/.env
+...
+```
+
+Each compose file then uses:
 
 ```yaml
-# In your compose.yml — reference vars directly, no env_file needed
-services:
-  myapp:
-    environment:
-      - MY_API_KEY=${MY_API_KEY}
-      - MY_PASSWORD=${MY_PASSWORD}
+env_file:
+  - .env
 ```
-
-```bash
-# Add the vars to shared/.env
-echo "MY_API_KEY=abc123" >> shared/.env
-echo "MY_PASSWORD=hunter2" >> shared/.env
-```
-
-That's it. No symlink, no `env_file:` block.
-
-> **Legacy symlinks:** Some services have `.env -> ../../shared/.env` symlinks from before `--env-file` was implemented. These are harmless but redundant — `**/.env` in `.gitignore` ensures they are never committed.
 
 **Required variables:**
 
@@ -640,7 +555,8 @@ That's it. No symlink, no `env_file:` block.
 | `HONEYGAIN_EMAIL` | `apps/honeygain` | Honeygain account email |
 | `HONEYGAIN_PASS` | `apps/honeygain` | Honeygain account password |
 | `HONEYGAIN_DEVICE` | `apps/honeygain` | Device name in Honeygain dashboard |
-| `OLLAMA_BASE_URL` | `services/open-webui` | Set to `http://ollama:11434` — resolved via Docker container DNS on the shared `proxy` network |
+| `OPENAI_API_BASE_URL` | `services/open-webui` | Set to `http://llama-swap:8080/v1` — llama-swap OpenAI compatible proxy endpoint |
+| `OPENAI_API_KEY` | `services/open-webui` | Set to `llama-swap` as a token placeholder |
 
 ---
 
@@ -650,17 +566,16 @@ That's it. No symlink, no `env_file:` block.
 - All `compose.yml` files
 - `shared/.env.example`
 - `scripts/` directory
-- `Makefile`, `.gitignore`, `README.md`
+- `lab` CLI tool
+- `.gitignore`, `README.md`
 - `core/traefik/config/` (static and dynamic Traefik config)
 
 **Gitignored:**
 - `shared/.env` — real secrets
-- All `data/`, `config/`, `state/`, `runtime/` directories — runtime data
+- All `data/`, `config/`, `state/` directories — runtime data
 - All `*-state/` directories — Tailscale private keys
 - `core/traefik/certs/` — private keys and certificates
-- `services/ollama/runtime/` — model weights
-- `services/kiwix/data/` — ZIM files (large, not version-controlled)
-- `services/kiwix/.tmp/` — in-progress downloads
+- `services/llama-swap/models/` — downloaded flat GGUF files
 - `backups/*.tar.gz` — backup archives
 
 **Before every commit:**
@@ -704,6 +619,29 @@ If you remove the sidecar, the service becomes completely unreachable. No firewa
 ### Auto-Discovery and Boot Order
 
 The `manage.sh` script finds all services by scanning for `compose.yml` files using `find`. The service name is the directory name containing the file. This means:
+
+- Adding a service requires no registration step
+- Renaming a directory changes the service name automatically
+- Duplicate directory names across different paths will error loudly
+
+Boot order is not hardcoded. `scripts/services.dep` declares only the edges of the dependency graph (which service needs which). The script runs a topological sort (Kahn's algorithm) over the full graph to produce a valid start order. Services with no dependencies are sorted alphabetically among themselves. If the graph contains a cycle (e.g. A depends on B and B depends on A), the sort detects this and exits with a clear error listing the offending services before anything starts.
+
+---
+
+### Why Bind Mounts over Named Volumes
+
+Docker named volumes are managed by Docker's internal storage engine. They are opaque — you cannot easily inspect, copy, or back them up without running a helper container.
+
+Bind mounts map a host directory directly into the container. Every piece of runtime data is a visible directory on disk:
+
+```
+services/llama-swap/models/   ← model weights, flat, visible and inspectable
+core/dns/config/              ← AdGuard config, editable with any text editor
+```
+
+This makes backup trivial (`cp -r` or `tar`), migration straightforward (copy the directory to a new host), and debugging easy (inspect files without entering the container). The tradeoff is that you must manage directory ownership manually — the scripts handle this for root-owned paths like Portainer.
+
+The one exception is `open-webui-data`, which uses a named volume because Open WebUI's image writes to a path that cannot easily be remapped with a bind mount. The backup script handles this with a temporary Alpine container.rvices by scanning for `compose.yml` files using `find`. The service name is the directory name containing the file. This means:
 
 - Adding a service requires no registration step
 - Renaming a directory changes the service name automatically
