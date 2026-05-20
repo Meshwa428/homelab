@@ -38,7 +38,7 @@ cmd_pull()    { "$SCRIPTS_DIR/manage.sh" pull "$@"; }
 cmd_remove()  { "$SCRIPTS_DIR/manage.sh" remove "$@"; }
 cmd_delete()  { "$SCRIPTS_DIR/manage.sh" delete "$@"; }
 cmd_status()  { "$SCRIPTS_DIR/manage.sh" status; }
-cmd_heal()    { "$SCRIPTS_DIR/manage.sh" heal; }
+cmd_heal()    { "$SCRIPTS_DIR/manage.sh" heal "$@"; }
 cmd_list()    { "$SCRIPTS_DIR/manage.sh" list; }
 
 # =============================================================================
@@ -340,6 +340,9 @@ ${BOLD}SERVICE COMMANDS${NC}
 ${BOLD}FLEET COMMANDS${NC}
   ${CYAN}./lab status${NC}                  Health table for all services
   ${CYAN}./lab heal${NC}                    Start any crashed or missing services
+  ${CYAN}./lab heal blacklist${NC}          List services excluded from healing
+  ${CYAN}./lab heal blacklist add <src>${NC}  Add a service to the heal blacklist
+  ${CYAN}./lab heal blacklist remove <src>${NC} Remove a service from the heal blacklist
   ${CYAN}./lab list${NC}                    List all services with deps and boot order
   ${CYAN}./lab network${NC}                 Ensure the shared proxy network exists
 
@@ -384,7 +387,7 @@ case "$COMMAND" in
   remove)  cmd_remove "$@" ;;
   delete)  cmd_delete "$@" ;;
   status)  cmd_status ;;
-  heal)    cmd_heal ;;
+  heal)    cmd_heal "$@" ;;
   list)    cmd_list ;;
   network) cmd_network ;;
   model)   cmd_model "$@" ;;

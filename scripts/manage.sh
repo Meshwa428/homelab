@@ -14,6 +14,12 @@ set -euo pipefail
 HOMELAB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPS_FILE="$HOMELAB_DIR/scripts/services.dep"
 
+# --- Parse HEAL_BLACKLIST from shared/.env if present -------------------------
+HEAL_BLACKLIST=""
+if [[ -f "$HOMELAB_DIR/shared/.env" ]]; then
+  HEAL_BLACKLIST=$(grep -E "^HEAL_BLACKLIST=" "$HOMELAB_DIR/shared/.env" | cut -d'=' -f2- | sed "s/^[ '\"\t]*//;s/[ '\"\t]*$//" || true)
+fi
+
 # --- Colors ------------------------------------------------------------------
 GREEN=$'\033[0;32m'
 YELLOW=$'\033[1;33m'
@@ -231,6 +237,16 @@ _health() {
   elif [[ "$running" -gt 0 ]];                         then echo "partial"
   else                                                       echo "exited"
   fi
+}
+
+_is_blacklisted() {
+  local service="$1"
+  local clean_list
+  clean_list=" ${HEAL_BLACKLIST//,/ } "
+  if [[ "$clean_list" =~ " $service " ]]; then
+    return 0
+  fi
+  return 1
 }
 
 # =============================================================================
@@ -493,7 +509,167 @@ cmd_status() {
   fi
 }
 
+cmd_heal_blacklist() {
+  local env_file="$HOMELAB_DIR/shared/.env"
+
+  if [[ $# -eq 0 ]]; then
+    header "Heal Blacklist"
+    local raw_val=""
+    if [[ -f "$env_file" ]]; then
+      raw_val=$(grep -E "^HEAL_BLACKLIST=" "$env_file" | cut -d'=' -f2- | sed "s/^[ '\"\t]*//;s/[ '\"\t]*$//" || true)
+    fi
+
+    local -a items=()
+    if [[ -n "$raw_val" ]]; then
+      # Convert commas to spaces and split into array
+      IFS=' ,' read -r -a items <<< "$raw_val"
+    fi
+
+    local -a clean_items=()
+    for item in "${items[@]}"; do
+      [[ -n "$item" ]] && clean_items+=("$item")
+    done
+
+    if [[ ${#clean_items[@]} -eq 0 ]]; then
+      info "No services are currently blacklisted from healing."
+    else
+      info "The following services are blacklisted from './lab heal':"
+      for item in "${clean_items[@]}"; do
+        step "$item"
+      done
+    fi
+    echo ""
+    return 0
+  fi
+
+  local action="$1"; shift
+  case "$action" in
+    add)
+      [[ $# -lt 1 ]] && error "Usage: ./lab heal blacklist add <service>"
+      local service="$1"
+      [[ -n "${SERVICES[$service]+_}" ]] || error "Unknown service: '$service'. Run './lab list' to see valid names."
+
+      local res
+      res=$(python3 - "$env_file" "$service" "add" <<'PYEOF'
+import sys
+env_path, service, action = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(env_path) as f:
+        lines = f.readlines()
+except Exception:
+    lines = []
+
+blacklist_val = ""
+blacklist_line_idx = -1
+for i, line in enumerate(lines):
+    if line.strip().startswith("HEAL_BLACKLIST="):
+        blacklist_val = line.split("=", 1)[1].strip()
+        if blacklist_val.startswith(('"', "'")) and blacklist_val.endswith(('"', "'")):
+            blacklist_val = blacklist_val[1:-1]
+        blacklist_line_idx = i
+        break
+
+items = [x.strip() for x in blacklist_val.replace(',', ' ').split() if x.strip()]
+if service in items:
+    print("EXISTS")
+    sys.exit(0)
+
+items.append(service)
+new_val = ",".join(items)
+
+if blacklist_line_idx != -1:
+    lines[blacklist_line_idx] = f"HEAL_BLACKLIST={new_val}\n"
+else:
+    if lines and not lines[-1].endswith('\n'):
+        lines[-1] += '\n'
+    lines.append("\n# ── Heal Blacklist ─────────────────────────────────────────────\n")
+    lines.append(f"HEAL_BLACKLIST={new_val}\n")
+
+with open(env_path, 'w') as f:
+    f.writelines(lines)
+print("SUCCESS")
+PYEOF
+)
+      if [[ "$res" == "EXISTS" ]]; then
+        warn "'$service' is already blacklisted."
+      else
+        # Force reload our in-memory variable for this run
+        HEAL_BLACKLIST=$(grep -E "^HEAL_BLACKLIST=" "$env_file" | cut -d'=' -f2- | sed "s/^[ '\"\t]*//;s/[ '\"\t]*$//" || true)
+        info "Added '$service' to the heal blacklist."
+      fi
+      ;;
+
+    remove|rm)
+      [[ $# -lt 1 ]] && error "Usage: ./lab heal blacklist remove <service>"
+      local service="$1"
+
+      local res
+      res=$(python3 - "$env_file" "$service" "remove" <<'PYEOF'
+import sys
+env_path, service, action = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(env_path) as f:
+        lines = f.readlines()
+except Exception:
+    lines = []
+
+blacklist_val = ""
+blacklist_line_idx = -1
+for i, line in enumerate(lines):
+    if line.strip().startswith("HEAL_BLACKLIST="):
+        blacklist_val = line.split("=", 1)[1].strip()
+        if blacklist_val.startswith(('"', "'")) and blacklist_val.endswith(('"', "'")):
+            blacklist_val = blacklist_val[1:-1]
+        blacklist_line_idx = i
+        break
+
+items = [x.strip() for x in blacklist_val.replace(',', ' ').split() if x.strip()]
+if service not in items:
+    print("NOT_EXISTS")
+    sys.exit(0)
+
+items.remove(service)
+new_val = ",".join(items)
+
+if blacklist_line_idx != -1:
+    lines[blacklist_line_idx] = f"HEAL_BLACKLIST={new_val}\n"
+else:
+    pass
+
+with open(env_path, 'w') as f:
+    f.writelines(lines)
+print("SUCCESS")
+PYEOF
+)
+      if [[ "$res" == "NOT_EXISTS" ]]; then
+        warn "'$service' is not blacklisted."
+      else
+        # Force reload our in-memory variable for this run
+        HEAL_BLACKLIST=$(grep -E "^HEAL_BLACKLIST=" "$env_file" | cut -d'=' -f2- | sed "s/^[ '\"\t]*//;s/[ '\"\t]*$//" || true)
+        info "Removed '$service' from the heal blacklist."
+      fi
+      ;;
+
+    *)
+      error "Unknown blacklist action: '$action'. Valid actions: 'add', 'remove'"
+      ;;
+  esac
+}
+
 cmd_heal() {
+  if [[ $# -gt 0 ]]; then
+    local sub="$1"; shift
+    case "$sub" in
+      blacklist)
+        cmd_heal_blacklist "$@"
+        ;;
+      *)
+        error "Unknown heal subcommand: '$sub'. Usage: ./lab heal [blacklist [add|remove <service>]]"
+        ;;
+    esac
+    return 0
+  fi
+
   header "Healing unhealthy services"
 
   local healed=0
@@ -507,9 +683,13 @@ cmd_heal() {
         info "$s ${DIM}(healthy)${NC}"
         ;;
       partial|exited|missing)
-        warn "$s is ${health} — starting..."
-        _compose "$s" up -d 2>&1 | grep -E "Started|Created|Running|Warning|Error" | sed 's/^/     /' || true
-        healed=$((healed + 1))
+        if _is_blacklisted "$s"; then
+          step "$s is ${health} (blacklisted — skipping)"
+        else
+          warn "$s is ${health} — starting..."
+          _compose "$s" up -d 2>&1 | grep -E "Started|Created|Running|Warning|Error" | sed 's/^/     /' || true
+          healed=$((healed + 1))
+        fi
         ;;
     esac
   done
@@ -624,7 +804,7 @@ case "$COMMAND" in
   remove)  cmd_remove "$@"  ;;
   delete)  cmd_delete "$@"  ;;
   status)  cmd_status       ;;
-  heal)    cmd_heal         ;;
+  heal)    cmd_heal "$@"    ;;
   logs)    cmd_logs "$@"    ;;
   pull)    cmd_pull "$@"    ;;
   list)    cmd_list         ;;
