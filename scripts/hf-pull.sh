@@ -194,6 +194,43 @@ EOF
 echo ""
 info "Registered ${BOLD}${MODEL_KEY}${NC} in services/llama-swap/config.yaml"
 echo ""
-echo -e "  ${DIM}Reload llama-swap to apply:${NC}"
-echo -e "  ${CYAN}./lab restart llama-swap${NC}"
-echo ""
+
+# --- Auto-Restart llama-swap ------------------------------------------------
+header "Service Synchronization"
+
+check_idle() {
+  local is_running
+  is_running=$(docker inspect -f '{{.State.Running}}' llama-swap 2>/dev/null || echo "false")
+  if [[ "$is_running" != "true" ]]; then
+    return 0
+  fi
+
+  local json
+  json=$(docker exec llama-swap curl -s http://localhost:8080/running 2>/dev/null || \
+         docker exec llama-swap wget -qO- http://localhost:8080/running 2>/dev/null || \
+         echo "")
+
+  if [[ -z "$json" ]]; then
+    return 0
+  fi
+
+  if python3 -c "import sys, json; data=json.loads(sys.argv[1]); sys.exit(0 if len(data.get('running', [])) == 0 else 1)" "$json" 2>/dev/null; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+if check_idle; then
+  info "llama-swap is idle. Restarting immediately to apply changes..."
+  "$HOMELAB_DIR/lab" restart llama-swap
+else
+  warn "llama-swap is currently active (serving models or processing requests)."
+  step "Waiting for llama-swap to become idle before restarting..."
+  while ! check_idle; do
+    sleep 5
+  done
+  info "llama-swap is now idle. Restarting..."
+  "$HOMELAB_DIR/lab" restart llama-swap
+fi
+
