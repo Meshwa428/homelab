@@ -84,8 +84,39 @@ This repository contains the complete configuration for a personal homelab. Ever
 ### Prerequisites
 
 - Debian/Ubuntu server with Docker and Docker Compose installed
-- `openssl` available
+- `openssl` and `rsync` available
 - A Tailscale account with an auth key
+
+### 0. Optimize Docker Storage (Recommended for Fresh Server Setup)
+
+On most default Linux installations, the root partition (`/`) is quite small, while the `/home` partition holds the vast majority of your disk space. Since Docker defaults to storing all images, containers, and volumes under `/var/lib/docker` (which lives on the root partition), you will quickly run out of space. 
+
+To permanently resolve this, configure Docker to store all data under `/home/docker`:
+
+1.  **Configure the Docker daemon:**
+    If you have already cloned this repository, copy the pre-configured storage template:
+    ```bash
+    sudo cp shared/daemon.json.example /etc/docker/daemon.json
+    ```
+    *If you are on a completely fresh server and haven't cloned this repository yet, manually create `/etc/docker/daemon.json` with these contents:*
+    ```json
+    {
+      "dns": ["8.8.8.8", "1.1.1.1"],
+      "data-root": "/home/docker"
+    }
+    ```
+
+2.  **Initialize the directory & restart Docker:**
+    ```bash
+    sudo mkdir -p /home/docker
+    sudo systemctl restart docker
+    ```
+
+3.  **Verify the new storage path:**
+    ```bash
+    docker info | grep "Docker Root Dir"
+    # Should output: Docker Root Dir: /home/docker
+    ```
 
 ### 1. Clone and configure secrets
 

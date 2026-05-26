@@ -97,10 +97,21 @@ if [[ -n "$HF_TOKEN" ]]; then
   ENV_ARGS+=("-e" "HF_TOKEN=$HF_TOKEN")
 fi
 
-DOWNLOAD_OUT=$(docker run --rm \
+# Define temp success file to capture filename from inside the container without swallow stdout/stderr
+SUCCESS_FILE_HOST="$MODELS_DIR/.success_file_$$"
+SUCCESS_FILE_CONTAINER="/models/.success_file_$$"
+rm -f "$SUCCESS_FILE_HOST"
+
+TTY_FLAG=""
+if [[ -t 1 ]]; then
+  TTY_FLAG="-t"
+fi
+
+docker run --rm $TTY_FLAG \
   --name "hf-puller-${SAFE_KEY}" \
   -v "$MODELS_DIR:/models" \
   -e HF_HUB_ENABLE_HF_TRANSFER=1 \
+  -e HF_XET_HIGH_PERFORMANCE=1 \
   -e HF_HOME=/models/.cache \
   "${ENV_ARGS[@]}" \
   -e PYTHONUNBUFFERED=1 \
@@ -142,18 +153,19 @@ try:
         local_dir=f'/models/{repo}',
         local_dir_use_symlinks=False
     )
-    print(f'DOWNLOAD_SUCCESS:{os.path.basename(path)}')
+    # Save the successful filename to the temp file
+    with open('$SUCCESS_FILE_CONTAINER', 'w') as f:
+        f.write(os.path.basename(path))
+    print('Download completed successfully!')
 except Exception as e:
     print(f'ERROR: Download failed: {e}', file=sys.stderr)
     sys.exit(1)
-\"")
+\""
 
-# Parse output
-echo "$DOWNLOAD_OUT"
-
-FILENAME=$(echo "$DOWNLOAD_OUT" | grep "DOWNLOAD_SUCCESS:" | cut -d':' -f2 || true)
-
-if [[ -z "$FILENAME" ]]; then
+if [[ -f "$SUCCESS_FILE_HOST" ]]; then
+  FILENAME=$(cat "$SUCCESS_FILE_HOST")
+  rm -f "$SUCCESS_FILE_HOST"
+else
   error "Download failed or target file could not be determined."
 fi
 
