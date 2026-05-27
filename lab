@@ -312,6 +312,108 @@ cmd_model() {
 }
 
 # =============================================================================
+# kiwix subcommands
+# =============================================================================
+
+KIWIX_SCRIPT="$SCRIPTS_DIR/kiwix-pull.sh"
+KIWIX_DATA="$HOMELAB_DIR/services/kiwix/data"
+
+kiwix_list() {
+  "$KIWIX_SCRIPT" --list
+}
+
+kiwix_browse() {
+  [[ $# -lt 1 ]] && { echo "Usage: ./lab kiwix browse <category> [--lang <code>]"; exit 1; }
+  local args=(--browse "$1")
+  shift
+  # Pass through any remaining flags (--lang, --all-lang)
+  "$KIWIX_SCRIPT" "${args[@]}" "$@"
+}
+
+kiwix_pull() {
+  [[ $# -lt 1 ]] && { echo "Usage: ./lab kiwix pull <category> [category2 ...] [--lang <code>] [--dry-run]"; exit 1; }
+  "$KIWIX_SCRIPT" "$@"
+}
+
+kiwix_file() {
+  [[ $# -lt 1 ]] && { echo "Usage: ./lab kiwix file <category> <filename>"; exit 1; }
+  local arg1="$1"
+  # If it's a URL, pass directly
+  if [[ "$arg1" == http* ]]; then
+    "$KIWIX_SCRIPT" --file "$arg1"
+  else
+    # arg1=category, arg2=filename → swap for kiwix-pull.sh (--file <name> <category>)
+    [[ $# -lt 2 ]] && { echo "Usage: ./lab kiwix file <category> <filename>"; exit 1; }
+    "$KIWIX_SCRIPT" --file "$2" "$1"
+  fi
+}
+
+kiwix_status() {
+  header "Kiwix library"
+  if [[ ! -d "$KIWIX_DATA" ]] || [[ -z "$(find "$KIWIX_DATA" -type f -name '*.zim' 2>/dev/null)" ]]; then
+    warn "No .zim files found. Use: ./lab kiwix pull <category>"
+    echo ""
+    step "Discover categories: ./lab kiwix list"
+    return
+  fi
+  printf "  ${BOLD}%-55s %s${NC}\n" "FILE" "SIZE"
+  printf "  ${DIM}%-55s %s${NC}\n" "───────────────────────────────────────────────────────" "──────"
+  find "$KIWIX_DATA" -type f -name '*.zim' | sort | while read -r f; do
+    local sz
+    sz=$(du -sh "$f" | cut -f1)
+    printf "  %-55s ${CYAN}%s${NC}\n" "$(basename "$f")" "$sz"
+  done
+  echo ""
+}
+
+kiwix_usage() {
+  cat <<EOF
+
+${BOLD}./lab kiwix${NC} — Manage Kiwix offline content library
+
+${BOLD}SUBCOMMANDS${NC}
+  ${CYAN}list${NC}                          List all available categories on Kiwix
+  ${CYAN}browse <category>${NC}             List files in a category (use --lang to filter)
+  ${CYAN}pull <category> [...]${NC}          Download latest ZIM(s) for a category
+  ${CYAN}file <category> <filename>${NC}     Download one exact file by name
+  ${CYAN}file <url>${NC}                     Download one exact file by URL
+  ${CYAN}status${NC}                        Show downloaded ZIM files and sizes
+
+${BOLD}OPTIONS${NC}  ${DIM}(pass after the subcommand)${NC}
+  ${CYAN}--lang <code>${NC}                 Language filter (default: en)
+  ${CYAN}--all-lang${NC}                    Download all languages
+  ${CYAN}--dry-run${NC}                     Preview without downloading
+
+${BOLD}EXAMPLES${NC}
+  ./lab kiwix list
+  ./lab kiwix browse wikipedia
+  ./lab kiwix browse wikipedia --lang fr
+  ./lab kiwix pull devdocs
+  ./lab kiwix pull freecodecamp stack_exchange
+  ./lab kiwix pull wikipedia --lang de
+  ./lab kiwix pull devdocs --dry-run
+  ./lab kiwix file wikipedia wikipedia_en_all_2026-02.zim
+  ./lab kiwix file https://download.kiwix.org/zim/other/archlinux_en_all_maxi_2025-09.zim
+  ./lab kiwix status
+
+EOF
+}
+
+cmd_kiwix() {
+  local sub="${1:-}"
+  [[ -z "$sub" ]] && { kiwix_usage; exit 0; }
+  shift
+  case "$sub" in
+    list)    kiwix_list ;;
+    browse)  kiwix_browse "$@" ;;
+    pull)    kiwix_pull "$@" ;;
+    file)    kiwix_file "$@" ;;
+    status)  kiwix_status ;;
+    *)       error "Unknown kiwix subcommand: '$sub'. Run './lab kiwix' for help." ;;
+  esac
+}
+
+# =============================================================================
 # network command
 # =============================================================================
 cmd_network() {
@@ -356,6 +458,13 @@ ${BOLD}MODEL COMMANDS${NC}  ${DIM}(llama-swap)${NC}
   ${CYAN}./lab model files${NC}             List downloaded GGUF files with sizes
   ${CYAN}./lab model remove <key>${NC}      Remove model from config (optionally disk)
 
+${BOLD}KIWIX COMMANDS${NC}  ${DIM}(offline library)${NC}
+  ${CYAN}./lab kiwix list${NC}              List all available categories
+  ${CYAN}./lab kiwix browse <category>${NC} Browse files in a category
+  ${CYAN}./lab kiwix pull <category>${NC}   Download latest ZIM(s) for a category
+  ${CYAN}./lab kiwix file <cat> <name>${NC} Download one exact file
+  ${CYAN}./lab kiwix status${NC}            Show downloaded ZIM files and sizes
+
 ${BOLD}EXAMPLES${NC}
   ./lab up                             # Start everything
   ./lab up traefik                     # Start just traefik (starts vpn dep first)
@@ -369,6 +478,9 @@ ${BOLD}EXAMPLES${NC}
   ./lab model pull bartowski/Mistral-7B-Instruct-v0.3-GGUF:Q5_K_M mistral
   ./lab model list
   ./lab model remove mistral
+  ./lab kiwix list                       # See available Kiwix categories
+  ./lab kiwix pull devdocs               # Download DevDocs offline
+  ./lab kiwix status                     # View downloaded ZIM files
 
 EOF
 }
@@ -377,113 +489,184 @@ EOF
 # Completions command
 # =============================================================================
 cmd_completions() {
-  cat <<'EOF'
+  cat <<'COMP'
 #compdef lab
 
 _lab() {
     local curcontext="$curcontext" state line
     typeset -A opt_args
 
-    # If completed word is 2, suggest top-level subcommands
-    if (( CURRENT == 2 )); then
-        local -a commands
-        commands=(
-            'up:Start all services, or a specific one'
-            'down:Stop all services, or a specific one'
-            'restart:Recreate a service container'
-            'logs:Follow logs'
-            'pull:Pull latest image(s)'
-            'remove:Stop and remove containers (keeps files)'
-            'delete:Remove containers AND delete service dir'
-            'status:Health table for all services'
-            'heal:Start any crashed or missing services'
-            'list:List all services'
-            'network:Ensure the shared proxy network exists'
-            'model:Manage llama-swap models'
-            'completions:Print Zsh autocompletion script'
-            'help:View full command reference'
-        )
-        _describe -t commands 'subcommand' commands
-        return
-    fi
+    _arguments -C \
+        '1: :->command' \
+        '*:: :->args'
 
-    # Inspect the first subcommand
-    local cmd="$words[2]"
-    case "$cmd" in
-        up|down|restart|logs|pull|remove|delete)
-            # Complete service names
-            local -a services
-            services=($(python3 -c "
+    case $state in
+        command)
+            local -a commands
+            commands=(
+                'up:Start all services, or a specific one'
+                'down:Stop all services, or a specific one'
+                'restart:Recreate a service container'
+                'logs:Follow logs'
+                'pull:Pull latest image(s)'
+                'remove:Stop and remove containers (keeps files)'
+                'delete:Remove containers AND delete service dir'
+                'status:Health table for all services'
+                'heal:Start any crashed or missing services'
+                'list:List all services'
+                'network:Ensure the shared proxy network exists'
+                'model:Manage llama-swap models'
+                'kiwix:Manage Kiwix offline content library'
+                'completions:Print Zsh autocompletion script'
+                'help:View full command reference'
+            )
+            _describe -t commands 'subcommand' commands ;;
+        args)
+            case $words[1] in
+                up|down|restart|logs|pull|remove|delete)
+                    local -a services
+                    services=($(python3 -c "
 import os
 services = []
-for root, dirs, files in os.walk('.'):
+for root, dirs, files in os.walk('$HOME/homelab'):
     if 'compose.yml' in files or 'docker-compose.yml' in files:
         if any(p in root for p in ['/core/', '/services/', '/apps/', '/shared/']):
             services.append(os.path.basename(root))
-print(' '.join(services))
+print(' '.join(sorted(services)))
 " 2>/dev/null))
-            _describe -t services 'service' services
-            ;;
-        heal)
-            if (( CURRENT == 3 )); then
-                local -a heal_subcmds
-                heal_subcmds=(
-                    'blacklist:List or manage services excluded from healing'
-                )
-                _describe -t heal_subcmds 'heal subcommand' heal_subcmds
-            elif (( CURRENT == 4 )) && [[ "$words[3]" == "blacklist" ]]; then
-                local -a blacklist_subcmds
-                blacklist_subcmds=(
-                    'add:Add a service to the heal blacklist'
-                    'remove:Remove a service from the heal blacklist'
-                )
-                _describe -t blacklist_subcmds 'blacklist subcommand' blacklist_subcmds
-            elif (( CURRENT == 5 )) && [[ "$words[3]" == "blacklist" ]] && [[ "$words[4]" == "add" || "$words[4]" == "remove" ]]; then
-                local -a services
-                services=($(python3 -c "
+                    _describe -t services 'service' services ;;
+                heal)
+                    case $CURRENT in
+                        2)
+                            local -a heal_subcmds
+                            heal_subcmds=(
+                                'blacklist:List or manage services excluded from healing'
+                            )
+                            _describe -t heal_subcmds 'heal subcommand' heal_subcmds ;;
+                        3)
+                            if [[ "$words[2]" == "blacklist" ]]; then
+                                local -a blacklist_subcmds
+                                blacklist_subcmds=(
+                                    'add:Add a service to the heal blacklist'
+                                    'remove:Remove a service from the heal blacklist'
+                                )
+                                _describe -t blacklist_subcmds 'blacklist subcommand' blacklist_subcmds
+                            fi ;;
+                        4)
+                            if [[ "$words[2]" == "blacklist" ]] && [[ "$words[3]" == "add" || "$words[3]" == "remove" ]]; then
+                                local -a services
+                                services=($(python3 -c "
 import os
 services = []
-for root, dirs, files in os.walk('.'):
+for root, dirs, files in os.walk('$HOME/homelab'):
     if 'compose.yml' in files or 'docker-compose.yml' in files:
         if any(p in root for p in ['/core/', '/services/', '/apps/', '/shared/']):
             services.append(os.path.basename(root))
-print(' '.join(services))
+print(' '.join(sorted(services)))
 " 2>/dev/null))
-                _describe -t services 'service' services
-            fi
-            ;;
-        model)
-            if (( CURRENT == 3 )); then
-                local -a model_subcmds
-                model_subcmds=(
-                    'pull:Download & register a model from HuggingFace'
-                    'remote:List all available quants in a remote HuggingFace repo'
-                    'list:List registered models and their keys'
-                    'files:List downloaded GGUF files with sizes'
-                    'remove:Remove model from config (optionally disk)'
-                )
-                _describe -t model_subcmds 'model subcommand' model_subcmds
-            elif (( CURRENT == 4 )) && [[ "$words[3]" == "remove" ]]; then
-                local -a model_keys
-                model_keys=($(python3 -c "
+                                _describe -t services 'service' services
+                            fi ;;
+                    esac ;;
+                model)
+                    case $CURRENT in
+                        2)
+                            local -a model_subcmds
+                            model_subcmds=(
+                                'pull:Download & register a model from HuggingFace'
+                                'remote:List all available quants in a remote HuggingFace repo'
+                                'list:List registered models and their keys'
+                                'files:List downloaded GGUF files with sizes'
+                                'remove:Remove model from config (optionally disk)'
+                            )
+                            _describe -t model_subcmds 'model subcommand' model_subcmds ;;
+                        3)
+                            if [[ "$words[2]" == "remove" ]]; then
+                                local -a model_keys
+                                model_keys=($(python3 -c "
 import yaml
 try:
-    with open('services/llama-swap/config.yaml') as f:
+    with open('$HOME/homelab/services/llama-swap/config.yaml') as f:
         config = yaml.safe_load(f)
     print(' '.join(config.keys()))
 except Exception:
     pass
 " 2>/dev/null))
-                if (( ${#model_keys} > 0 )); then
-                    _describe -t model_keys 'model key' model_keys
-                fi
-            fi
-            ;;
+                                if (( ${#model_keys} > 0 )); then
+                                    _describe -t model_keys 'model key' model_keys
+                                fi
+                            fi ;;
+                    esac ;;
+                kiwix)
+                    # Helper: ensure category cache exists
+                    _lab_kiwix_categories() {
+                        local cache_dir="$HOME/.cache/lab"
+                        local cache_file="$cache_dir/kiwix_categories"
+                        local max_age=86400
+                        if [[ ! -f "$cache_file" ]] || (( $(date +%s) - $(date -r "$cache_file" +%s 2>/dev/null || echo 0) > max_age )); then
+                            mkdir -p "$cache_dir"
+                            wget -qO- "https://download.kiwix.org/zim/" 2>/dev/null \
+                                | grep -oP '(?<=href=")[a-zA-Z0-9_-]+(?=/)' \
+                                | sort -u > "$cache_file" 2>/dev/null
+                        fi
+                        if [[ -f "$cache_file" ]]; then
+                            local -a categories
+                            categories=(${(f)"$(< $cache_file)"})
+                            _describe -t categories 'kiwix category' categories
+                        fi
+                    }
+
+                    case $CURRENT in
+                        2)
+                            local -a kiwix_subcmds
+                            kiwix_subcmds=(
+                                'list:List all available categories on Kiwix'
+                                'browse:List files in a category'
+                                'pull:Download latest ZIM(s) for a category'
+                                'file:Download one exact file by name'
+                                'status:Show downloaded ZIM files and sizes'
+                            )
+                            _describe -t kiwix_subcmds 'kiwix subcommand' kiwix_subcmds ;;
+                        3)
+                            # browse/pull/file all take a category as first arg
+                            if [[ "$words[2]" == "browse" || "$words[2]" == "pull" || "$words[2]" == "file" ]]; then
+                                _lab_kiwix_categories
+                            fi ;;
+                        4)
+                            if [[ "$words[2]" == "file" ]]; then
+                                # Fetch and cache file list for this category
+                                local category="$words[3]"
+                                local cache_dir="$HOME/.cache/lab"
+                                local cache_file="$cache_dir/kiwix_files_${category}"
+                                local max_age=86400
+                                if [[ ! -f "$cache_file" ]] || (( $(date +%s) - $(date -r "$cache_file" +%s 2>/dev/null || echo 0) > max_age )); then
+                                    mkdir -p "$cache_dir"
+                                    wget -qO- "https://download.kiwix.org/zim/${category}/" 2>/dev/null \
+                                        | grep -oP 'href="[^"]+\.zim"' \
+                                        | grep -oP '"[^"]+"' \
+                                        | tr -d '"' \
+                                        | sort > "$cache_file" 2>/dev/null
+                                fi
+                                if [[ -f "$cache_file" ]]; then
+                                    local -a files
+                                    files=(${(f)"$(< $cache_file)"})
+                                    _describe -t files 'zim file' files
+                                fi
+                            elif [[ "$words[2]" == "pull" ]]; then
+                                # pull accepts multiple categories
+                                _lab_kiwix_categories
+                            fi ;;
+                        *)
+                            # pull accepts multiple categories
+                            if [[ "$words[2]" == "pull" ]]; then
+                                _lab_kiwix_categories
+                            fi ;;
+                    esac ;;
+            esac ;;
     esac
 }
 
 _lab "$@"
-EOF
+COMP
 }
 
 # =============================================================================
@@ -505,6 +688,7 @@ case "$COMMAND" in
   list)    cmd_list ;;
   network) cmd_network ;;
   model)   cmd_model "$@" ;;
+  kiwix)   cmd_kiwix "$@" ;;
   completions) cmd_completions ;;
   help|--help|-h) usage ;;
   *)       error "Unknown command: '$COMMAND'. Run './lab help'" ;;
