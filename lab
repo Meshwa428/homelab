@@ -345,6 +345,7 @@ ${BOLD}FLEET COMMANDS${NC}
   ${CYAN}./lab heal blacklist remove <src>${NC} Remove a service from the heal blacklist
   ${CYAN}./lab list${NC}                    List all services with deps and boot order
   ${CYAN}./lab network${NC}                 Ensure the shared proxy network exists
+  ${CYAN}./lab completions${NC}             Print Zsh autocompletion script
 
 ${BOLD}MODEL COMMANDS${NC}  ${DIM}(llama-swap)${NC}
   ${CYAN}./lab model pull <repo[:quant]> [key]${NC}
@@ -373,6 +374,140 @@ EOF
 }
 
 # =============================================================================
+# Completions command
+# =============================================================================
+cmd_completions() {
+  cat <<'EOF'
+#compdef lab
+
+_lab() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    _arguments -C \
+        '1: :->command' \
+        '*:: :->args'
+
+    case $state in
+        command)
+            local -a commands
+            commands=(
+                'up:Start all services, or a specific one'
+                'down:Stop all services, or a specific one'
+                'restart:Recreate a service container'
+                'logs:Follow logs'
+                'pull:Pull latest image(s)'
+                'remove:Stop and remove containers (keeps files)'
+                'delete:Remove containers AND delete service dir'
+                'status:Health table for all services'
+                'heal:Start any crashed or missing services'
+                'list:List all services'
+                'network:Ensure the shared proxy network exists'
+                'model:Manage llama-swap models'
+                'completions:Print Zsh autocompletion script'
+                'help:View full command reference'
+            )
+            _describe -t commands 'subcommand' commands ;;
+        args)
+            local cmd="$words[1]"
+            case "$cmd" in
+                up|down|restart|logs|pull|remove|delete)
+                    local -a services
+                    services=($(python3 -c "
+import os
+services = []
+for root, dirs, files in os.walk('.'):
+    if 'compose.yml' in files or 'docker-compose.yml' in files:
+        if any(p in root for p in ['/core/', '/services/', '/apps/', '/shared/']):
+            services.append(os.path.basename(root))
+print(' '.join(services))
+" 2>/dev/null))
+                    _describe -t services 'service' services ;;
+                heal)
+                    local -a heal_subcmds
+                    heal_subcmds=(
+                        'blacklist:List or manage services excluded from healing'
+                    )
+                    _arguments -C '1: :->heal_sub' '*:: :->heal_args'
+                    case $state in
+                        heal_sub)
+                            _describe -t heal_subcmds 'heal subcommand' heal_subcmds ;;
+                        heal_args)
+                            local heal_cmd="$words[2]"
+                            if [[ "$heal_cmd" == "blacklist" ]]; then
+                                local -a blacklist_subcmds
+                                blacklist_subcmds=(
+                                    'add:Add a service to the heal blacklist'
+                                    'remove:Remove a service from the heal blacklist'
+                                )
+                                _arguments -C '1: :->bl_sub' '*:: :->bl_args'
+                                case $state in
+                                    bl_sub)
+                                        _describe -t blacklist_subcmds 'blacklist subcommand' blacklist_subcmds ;;
+                                    bl_args)
+                                        local bl_cmd="$words[3]"
+                                        if [[ "$bl_cmd" == "add" || "$bl_cmd" == "remove" ]]; then
+                                            local -a services
+                                            services=($(python3 -c "
+import os
+services = []
+for root, dirs, files in os.walk('.'):
+    if 'compose.yml' in files or 'docker-compose.yml' in files:
+        if any(p in root for p in ['/core/', '/services/', '/apps/', '/shared/']):
+            services.append(os.path.basename(root))
+print(' '.join(services))
+" 2>/dev/null))
+                                            _describe -t services 'service' services
+                                        fi
+                                        ;;
+                                esac
+                            fi
+                            ;;
+                    esac
+                    ;;
+                model)
+                    local -a model_subcmds
+                    model_subcmds=(
+                        'pull:Download & register a model from HuggingFace'
+                        'remote:List all available quants in a remote HuggingFace repo'
+                        'list:List registered models and their keys'
+                        'files:List downloaded GGUF files with sizes'
+                        'remove:Remove model from config (optionally disk)'
+                    )
+                    _arguments -C '1: :->model_sub' '*:: :->model_args'
+                    case $state in
+                        model_sub)
+                            _describe -t model_subcmds 'model subcommand' model_subcmds ;;
+                        model_args)
+                            local model_cmd="$words[2]"
+                            if [[ "$model_cmd" == "remove" ]]; then
+                                local -a model_keys
+                                model_keys=($(python3 -c "
+import yaml
+try:
+    with open('services/llama-swap/config.yaml') as f:
+        config = yaml.safe_load(f)
+    print(' '.join(config.keys()))
+except Exception:
+    pass
+" 2>/dev/null))
+                                if (( ${#model_keys} > 0 )); then
+                                    _describe -t model_keys 'model key' model_keys
+                                fi
+                            fi
+                            ;;
+                    esac
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_lab "$@"
+EOF
+}
+
+# =============================================================================
 # Entry point
 # =============================================================================
 COMMAND="${1:-help}"
@@ -391,6 +526,7 @@ case "$COMMAND" in
   list)    cmd_list ;;
   network) cmd_network ;;
   model)   cmd_model "$@" ;;
+  completions) cmd_completions ;;
   help|--help|-h) usage ;;
   *)       error "Unknown command: '$COMMAND'. Run './lab help'" ;;
 esac
