@@ -10,7 +10,7 @@ services:
       - proxy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.portainer.rule=Host(`portainer.homeserver.com`)"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.home.meshwa.space`)"
       - "traefik.http.routers.portainer.entrypoints=websecure"
       - "traefik.http.routers.portainer.tls=true"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"

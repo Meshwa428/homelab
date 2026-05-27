@@ -57,7 +57,7 @@ This repository contains the complete configuration for a personal homelab. Ever
          (Traefik)      (AdGuard)       (host VPN)
               │              │
     ┌─────────┴─────┐   DNS rewrites
-    │  proxy network │   *.homeserver.com
+    │  proxy network │   *.home.meshwa.space
     │                │   → ts-traefik IP
     │  ┌──────────┐  │
     │  │portainer │  │
@@ -69,7 +69,7 @@ This repository contains the complete configuration for a personal homelab. Ever
     └────────────────┘
 ```
 
-**Traffic flow for `https://portainer.homeserver.com`:**
+**Traffic flow for `https://portainer.home.meshwa.space`:**
 
 1. Device sends DNS query → resolved by AdGuard (via Tailscale Split DNS)
 2. AdGuard wildcard rewrite returns the Tailscale IP of `ts-traefik`
@@ -161,7 +161,7 @@ In AdGuard Home → Filters → DNS Rewrites:
 
 | Domain | Target |
 |--------|--------|
-| `*.homeserver.com` | Tailscale IP of `ts-traefik` |
+| `*.home.meshwa.space` | Tailscale IP of `ts-traefik` |
 
 Get the Traefik Tailscale IP after step 6 from the Tailscale admin dashboard.
 
@@ -260,12 +260,12 @@ homelab/
 |---------|-----|---------|
 | **Traefik** | — | Reverse proxy, automatic HTTPS termination |
 | **AdGuard Home** | Tailscale IP of `ts-dns` | Network-wide ad blocking, custom DNS rewrites |
-| **Portainer** | `https://portainer.homeserver.com` | Docker management UI |
-| **WUD** | `https://wud.homeserver.com` | What's Up Docker container auto-update utility |
-| **Copyparty** | `https://copyparty.homeserver.com` | File manager with WebDAV, resumable uploads |
-| **llama-swap** | `https://ollama.homeserver.com` | Local LLM inference routing layer |
-| **Open WebUI** | `https://ai.homeserver.com` | ChatGPT-style UI backed by llama-swap |
-| **VS Code** | `https://vscode.homeserver.com` | Browser-based IDE |
+| **Portainer** | `https://portainer.home.meshwa.space` | Docker management UI |
+| **WUD** | `https://wud.home.meshwa.space` | What's Up Docker container auto-update utility |
+| **Copyparty** | `https://copyparty.home.meshwa.space` | File manager with WebDAV, resumable uploads |
+| **llama-swap** | `https://ollama.home.meshwa.space` | Local LLM inference routing layer |
+| **Open WebUI** | `https://ai.home.meshwa.space` | ChatGPT-style UI backed by llama-swap |
+| **VS Code** | `https://vscode.home.meshwa.space` | Browser-based IDE |
 | **Honeygain** | — | Passive income via bandwidth sharing |
 | **Tailscale VPN** | — | Host-level VPN node for SSH access |
 
@@ -292,7 +292,7 @@ services:
       - proxy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.myapp.rule=Host(`myapp.homeserver.com`)"
+      - "traefik.http.routers.myapp.rule=Host(`myapp.home.meshwa.space`)"
       - "traefik.http.routers.myapp.entrypoints=websecure"
       - "traefik.http.routers.myapp.tls=true"
       - "traefik.http.services.myapp.loadbalancer.server.port=8080"
@@ -467,7 +467,7 @@ openssl x509 -in core/traefik/certs/wildcard.crt -noout -dates
 
 ### Trust the Local CA on a Device
 
-The CA certificate is at `core/traefik/certs/ca.crt`. Install it once per device — all `*.homeserver.com` subdomains will then show as trusted.
+The CA certificate is at `core/traefik/certs/ca.crt`. Install it once per device — all `*.home.meshwa.space` subdomains will then show as trusted.
 
 **Linux:**
 ```bash

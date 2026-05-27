@@ -31,3 +31,15 @@ models:
     cmd: "llama-server --port ${PORT} --model /models/unsloth/Qwen3.5-2B-MTP-GGUF/Qwen3.5-2B-Q4_K_M.gguf -c 2048 --threads 4"
     proxy: "http://127.0.0.1:${PORT}"
     ttl: 300
+  "qwen2b-mtp":
+    cmd: "llama-server --port ${PORT} --model /models/unsloth/Qwen3.5-2B-MTP-GGUF/Qwen3.5-2B-Q4_K_M.gguf -c 2048 --threads 4 --spec-type draft-mtp --spec-draft-n-max 4"
+    proxy: "http://127.0.0.1:${PORT}"
+    ttl: 300
+  "qwopus":
+    cmd: "llama-server --port ${PORT} --model /models/Jackrong/Qwopus3.5-9B-Coder-MTP-GGUF/Qwopus3.5-9B-Coder-MTP-Q4_K_M.gguf -c 2048 --threads 4"
+    proxy: "http://127.0.0.1:${PORT}"
+    ttl: 300
+  "qwopus-mtp":
+    cmd: "llama-server --port ${PORT} --model /models/Jackrong/Qwopus3.5-9B-Coder-MTP-GGUF/Qwopus3.5-9B-Coder-MTP-Q4_K_M.gguf -c 2048 --threads 4 --spec-type draft-mtp --spec-draft-n-max 4"
+    proxy: "http://127.0.0.1:${PORT}"
+    ttl: 300

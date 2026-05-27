@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# gen-certs.sh — Generate a local CA and wildcard cert for *.homeserver.com
+# gen-certs.sh — Generate a local CA and wildcard cert for *.home.meshwa.space
 # Run this once from the homelab root:
 #   ./scripts/gen-certs.sh
 #
@@ -11,7 +11,7 @@
 set -euo pipefail
 
 CERT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/core/traefik/certs"
-DOMAIN="homeserver.com"
+DOMAIN="home.meshwa.space"
 CA_KEY="$CERT_DIR/ca.key"
 CA_CERT="$CERT_DIR/ca.crt"
 WILDCARD_KEY="$CERT_DIR/wildcard.key"

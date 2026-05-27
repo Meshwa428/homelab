@@ -47,7 +47,7 @@ services:
     networks: [proxy]
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.romm.rule=Host(`romm.homeserver.com`)"
+      - "traefik.http.routers.romm.rule=Host(`romm.home.meshwa.space`)"
       - "traefik.http.routers.romm.entrypoints=websecure"
       - "traefik.http.routers.romm.tls=true"
       - "traefik.http.services.romm.loadbalancer.server.port=8080"

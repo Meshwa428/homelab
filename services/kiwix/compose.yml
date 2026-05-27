@@ -9,7 +9,7 @@ services:
     networks: [proxy]
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.kiwix.rule=Host(`kiwix.homeserver.com`)"
+      - "traefik.http.routers.kiwix.rule=Host(`kiwix.home.meshwa.space`)"
       - "traefik.http.routers.kiwix.entrypoints=websecure"
       - "traefik.http.routers.kiwix.tls=true"
       - "traefik.http.services.kiwix.loadbalancer.server.port=8080"

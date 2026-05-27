@@ -11,7 +11,7 @@ services:
     command: --config /app/config.yaml --listen 0.0.0.0:8080
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.llama-swap.rule=Host(`ollama.homeserver.com`)"
+      - "traefik.http.routers.llama-swap.rule=Host(`ollama.home.meshwa.space`)"
       - "traefik.http.routers.llama-swap.entrypoints=websecure"
       - "traefik.http.routers.llama-swap.tls=true"
       - "traefik.http.services.llama-swap.loadbalancer.server.port=8080"

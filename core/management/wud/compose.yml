@@ -18,7 +18,7 @@ services:
       - proxy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.wud.rule=Host(`wud.homeserver.com`)"
+      - "traefik.http.routers.wud.rule=Host(`wud.home.meshwa.space`)"
       - "traefik.http.routers.wud.entrypoints=websecure"
       - "traefik.http.routers.wud.tls=true"
       - "traefik.http.services.wud.loadbalancer.server.port=3000"

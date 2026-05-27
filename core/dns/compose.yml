@@ -29,7 +29,7 @@ services:
       - ts-dns
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.adguard.rule=Host(`adguard.homeserver.com`)"
+      - "traefik.http.routers.adguard.rule=Host(`adguard.home.meshwa.space`)"
       - "traefik.http.routers.adguard.entrypoints=websecure"
       - "traefik.http.routers.adguard.tls=true"
       - "traefik.http.services.adguard.loadbalancer.server.port=80"

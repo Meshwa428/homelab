@@ -6,7 +6,7 @@ Tier 1 — Core survival infrastructure
 
 
 
-Mealie — recipe manager with full offline cookbook. Import everything from the internet now while you can. mealie.homeserver.com
+Mealie — recipe manager with full offline cookbook. Import everything from the internet now while you can. mealie.home.meshwa.space
 
 
 
