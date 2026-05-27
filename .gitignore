@@ -53,3 +53,7 @@ apple-music-downloader/
 
 # ACME certificate storage (contains Let's Encrypt keys)
 **/acme/
+
+# CLI workspace folders
+.antigravitycli/
+
