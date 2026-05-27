@@ -155,15 +155,31 @@ Trust `core/traefik/certs/ca.crt` on each device — see [Trust the Local CA on 
 ./lab network
 ```
 
-### 5. Configure AdGuard DNS rewrite
+### 5. Configure DNS Resolution
 
-In AdGuard Home → Filters → DNS Rewrites:
+To access your homelab services via `*.home.meshwa.space`, you need to configure DNS so your devices can resolve these subdomains to your homelab's private Tailscale IP (`100.94.178.54`).
+
+#### Option A: Public Wildcard DNS via Hostinger (Recommended & Reboot-Resilient)
+By adding a wildcard `A` record directly in your Hostinger public DNS panel pointing to your private Tailscale IP, you completely avoid any "chicken-and-egg" bootstrapping problems during reboots. 
+Even when the homelab is rebooting or offline, your devices can still instantly resolve `*.home.meshwa.space` via public DNS (like Cloudflare `1.1.1.1` or Google `8.8.8.8`). Once the homelab finishes booting and Tailscale connects, everything works seamlessly! It is 100% secure since the private `100.x.y.z` range is only accessible to logged-in Tailscale devices.
+
+1. Log in to your **Hostinger Control Panel**.
+2. Go to **Domains** -> Select **meshwa.space** -> **DNS / Nameservers**.
+3. Add a new **A Record**:
+   - **Type**: `A`
+   - **Name (Host)**: `*.home` (which matches any subdomain like `portainer.home.meshwa.space`)
+   - **Points to**: `100.94.178.54` (the Tailscale IP of your `ts-traefik` container)
+   - **TTL**: `14400` (or default/lowest available value for fast updates)
+4. Click **Add Record**.
+
+#### Option B: Local DNS via AdGuard Home (Fallback / Offline Split-DNS)
+If you prefer not to publish your private Tailscale IP on public DNS servers, you can configure local DNS rewrites in AdGuard Home. Note that this requires your client devices to use the homelab's AdGuard Home as their DNS server, which can cause bootstrapping delays or internet access loss during a homelab reboot.
+
+In AdGuard Home -> **Filters** -> **DNS Rewrites**:
 
 | Domain | Target |
 |--------|--------|
-| `*.home.meshwa.space` | Tailscale IP of `ts-traefik` |
-
-Get the Traefik Tailscale IP after step 6 from the Tailscale admin dashboard.
+| `*.home.meshwa.space` | `100.94.178.54` |
 
 ### 6. Start everything
 
