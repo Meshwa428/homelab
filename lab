@@ -433,7 +433,7 @@ print(' '.join(services))
                         heal_sub)
                             _describe -t heal_subcmds 'heal subcommand' heal_subcmds ;;
                         heal_args)
-                            local heal_cmd="$words[2]"
+                            local heal_cmd="$words[1]"
                             if [[ "$heal_cmd" == "blacklist" ]]; then
                                 local -a blacklist_subcmds
                                 blacklist_subcmds=(
@@ -445,7 +445,7 @@ print(' '.join(services))
                                     bl_sub)
                                         _describe -t blacklist_subcmds 'blacklist subcommand' blacklist_subcmds ;;
                                     bl_args)
-                                        local bl_cmd="$words[3]"
+                                        local bl_cmd="$words[1]"
                                         if [[ "$bl_cmd" == "add" || "$bl_cmd" == "remove" ]]; then
                                             local -a services
                                             services=($(python3 -c "
@@ -479,7 +479,7 @@ print(' '.join(services))
                         model_sub)
                             _describe -t model_subcmds 'model subcommand' model_subcmds ;;
                         model_args)
-                            local model_cmd="$words[2]"
+                            local model_cmd="$words[1]"
                             if [[ "$model_cmd" == "remove" ]]; then
                                 local -a model_keys
                                 model_keys=($(python3 -c "
