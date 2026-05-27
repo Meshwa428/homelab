@@ -157,29 +157,43 @@ Trust `core/traefik/certs/ca.crt` on each device — see [Trust the Local CA on 
 
 ### 5. Configure DNS Resolution
 
-To access your homelab services via `*.home.meshwa.space`, you need to configure DNS so your devices can resolve these subdomains to your homelab's private Tailscale IP (`100.94.178.54`).
+To access your homelab services and SSH cleanly via your real domain `meshwa.space`, you can configure DNS records in your Vercel panel. 
 
-#### Option A: Public Wildcard DNS via Vercel (Recommended & Reboot-Resilient)
-By adding a wildcard `A` record directly in your Vercel DNS settings pointing to your private Tailscale IP, you completely avoid any "chicken-and-egg" bootstrapping problems during reboots. 
-Even when the homelab is rebooting or offline, your devices can still instantly resolve `*.home.meshwa.space` via public DNS (like Cloudflare `1.1.1.1` or Google `8.8.8.8`). Once the homelab finishes booting and Tailscale connects, everything works seamlessly! It is 100% secure since the private `100.x.y.z` range is only accessible to logged-in Tailscale devices.
+#### A. Web Routing Wildcard (Recommended & Reboot-Resilient)
+By adding a wildcard `A` record directly in your Vercel DNS settings pointing to the **Traefik Proxy container's Tailscale IP** (`100.110.246.20`), you completely avoid any "chicken-and-egg" bootstrapping problems during reboots. 
+Even when the homelab is rebooting or offline, your devices can still instantly resolve `*.home.meshwa.space` via public DNS. Once the homelab finishes booting and Tailscale connects, everything works seamlessly! It is 100% secure since the private `100.x.y.z` range is only accessible to logged-in Tailscale devices.
 
 1. Log in to your **Vercel Dashboard**.
 2. Go to your account/team dashboard -> **Settings** -> **Domains**.
 3. Select **meshwa.space** and click **View DNS Records** or click the domain to manage its records.
 4. Add a new **DNS Record**:
    - **Type**: `A`
-   - **Name**: `*.home` (which matches any subdomain like `portainer.home.meshwa.space`)
-   - **Value**: `100.94.178.54` (the Tailscale IP of your `ts-traefik` container)
+   - **Name**: `*.home` (matches any subdomain like `portainer.home.meshwa.space`)
+   - **Value**: `100.110.246.20` (the Tailscale IP of your `ts-traefik` container)
 5. Click **Add**.
 
-#### Option B: Local DNS via AdGuard Home (Fallback / Offline Split-DNS)
-If you prefer not to publish your private Tailscale IP on public DNS servers, you can configure local DNS rewrites in AdGuard Home. Note that this requires your client devices to use the homelab's AdGuard Home as their DNS server, which can cause bootstrapping delays or internet access loss during a homelab reboot.
+#### B. Direct Host SSH Access (Optional)
+Because SSH runs directly on the host machine (on port 22) rather than routing through the Traefik web proxy, you can map a dedicated DNS record pointing directly to the **Host's Tailscale IP** (`100.94.178.54`).
+
+1. In your **Vercel DNS Records** page, add another record:
+   - **Type**: `A`
+   - **Name**: `home` (creates `home.meshwa.space` directly) or `ssh.home`
+   - **Value**: `100.94.178.54` (the main Tailscale IP of the host machine)
+2. Click **Add**.
+3. You can now SSH directly into the homelab from your Tailscale devices using:
+   ```bash
+   ssh mesh@home.meshwa.space
+   ```
+
+#### C. Local DNS via AdGuard Home (Fallback / Offline Split-DNS)
+If you prefer not to publish your private Tailscale IPs on public DNS servers, you can configure local DNS rewrites in AdGuard Home.
 
 In AdGuard Home -> **Filters** -> **DNS Rewrites**:
 
-| Domain | Target |
-|--------|--------|
-| `*.home.meshwa.space` | `100.94.178.54` |
+| Domain | Target | Note |
+|--------|--------|------|
+| `*.home.meshwa.space` | `100.110.246.20` | Traefik Proxy IP |
+| `home.meshwa.space` | `100.94.178.54` | Host Machine IP |
 
 ### 6. Start everything
 
