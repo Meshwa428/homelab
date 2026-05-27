@@ -50,3 +50,6 @@ apple-music-downloader/
 # Kiwix
 **/*.tmp
 **/*.zim
+
+# ACME certificate storage (contains Let's Encrypt keys)
+**/acme/

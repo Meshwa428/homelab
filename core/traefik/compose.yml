@@ -23,11 +23,16 @@ services:
     network_mode: "service:ts-traefik"
     depends_on:
       - ts-traefik
+    env_file:
+      - .env
+    environment:
+      - VERCEL_API_TOKEN=${VERCEL_API_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./config/dynamic:/etc/traefik/dynamic:ro
       - ./certs:/certs:ro
+      - ./acme/acme.json:/acme.json
 
 networks:
   default:
