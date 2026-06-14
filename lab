@@ -136,9 +136,10 @@ model_remove() {
   [[ ! -f "$CONFIG_FILE" ]] && error "Config not found: $CONFIG_FILE"
   grep -q "^  ${key}:" "$CONFIG_FILE" || grep -q "^  \"${key}\":" "$CONFIG_FILE" || error "Model key '${key}' not found in config."
 
-  # Get the model file path from config before deleting
-  local model_file
+  # Get the model and mmproj file paths from config before deleting
+  local model_file mmproj_file
   model_file=$(grep -A3 -E "^  (\"${key}\"|${key}):" "$CONFIG_FILE" | grep -oP '(?<=--model )[^ ]+' | head -1 || true)
+  mmproj_file=$(grep -A3 -E "^  (\"${key}\"|${key}):" "$CONFIG_FILE" | grep -oP '(?<=--mmproj )[^ ]+' | head -1 || true)
 
   local local_file=""
   if [[ -n "$model_file" ]]; then
@@ -147,10 +148,18 @@ model_remove() {
     local_file="$MODELS_DIR/$rel_path"
   fi
 
+  local local_mmproj=""
+  if [[ -n "$mmproj_file" ]]; then
+    local mmproj_rel_path
+    mmproj_rel_path=$(echo "$mmproj_file" | sed 's|^/models/||')
+    local_mmproj="$MODELS_DIR/$mmproj_rel_path"
+  fi
+
   echo ""
   echo -e "  ${YELLOW}${BOLD}⚠  This will remove '${key}' from config.yaml.${NC}"
   [[ -n "$local_file" ]] && echo -e "  ${DIM}Model file: $local_file${NC}"
-  echo -ne "\n  Also delete the model file from disk? [y/N]: "
+  [[ -n "$local_mmproj" ]] && echo -e "  ${DIM}Projector file: $local_mmproj${NC}"
+  echo -ne "\n  Also delete the model and projector files from disk? [y/N]: "
   read -r del_file
 
   # Remove from config
@@ -172,14 +181,20 @@ with open(config_path, 'w') as f:
 PYEOF
   info "Removed '${key}' from config.yaml"
 
-  if [[ "$del_file" =~ ^[Yy]$ ]] && [[ -n "$local_file" ]] && [[ -f "$local_file" ]]; then
-    sudo rm -f "$local_file"
-    info "Deleted file: $local_file"
+  if [[ "$del_file" =~ ^[Yy]$ ]]; then
+    if [[ -n "$local_file" ]] && [[ -f "$local_file" ]]; then
+      sudo rm -f "$local_file"
+      info "Deleted file: $local_file"
+    fi
+    if [[ -n "$local_mmproj" ]] && [[ -f "$local_mmproj" ]]; then
+      sudo rm -f "$local_mmproj"
+      info "Deleted projector file: $local_mmproj"
+    fi
 
     # Clean up parent directories if they are subdirectories of MODELS_DIR
     local parent_dir
-    parent_dir=$(dirname "$local_file")
-    if [[ "$parent_dir" != "$MODELS_DIR" ]] && [[ "$parent_dir" == "$MODELS_DIR"/* ]]; then
+    parent_dir=$(dirname "${local_file:-$local_mmproj}")
+    if [[ -n "$parent_dir" ]] && [[ "$parent_dir" != "$MODELS_DIR" ]] && [[ "$parent_dir" == "$MODELS_DIR"/* ]]; then
       if [[ -d "$parent_dir" ]]; then
         sudo rm -rf "$parent_dir"
         info "Removed model directory: $parent_dir"
