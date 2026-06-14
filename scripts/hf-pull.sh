@@ -473,19 +473,17 @@ if [[ -n "$MMPROJ_FILENAME" ]]; then
 fi
 
 EMBEDDING_ARGS=""
-CTX_SIZE="2048"
 if [[ "$IS_EMBEDDING" == "true" ]]; then
-  CTX_SIZE="8192"
   EMBEDDING_ARGS=" --embedding"
   if [[ -n "$POOLING" ]]; then
     EMBEDDING_ARGS="${EMBEDDING_ARGS} --pooling ${POOLING}"
   fi
-  info "Detected Embedding Model! Registering with context size ${BOLD}${CTX_SIZE}${NC} and pooling strategy ${BOLD}${POOLING}${NC}."
+  info "Detected Embedding Model! Registering with pooling strategy ${BOLD}${POOLING}${NC}."
 fi
 
 cat <<EOF >> "$CONFIG_FILE"
   "${MODEL_KEY}":
-    cmd: "llama-server --port \${PORT} --model /models/${REPO_ID}/${FILENAME}${MMPROJ_ARG}${EMBEDDING_ARGS} -c ${CTX_SIZE} --threads 4"
+    cmd: "llama-server --port \${PORT} --model /models/${REPO_ID}/${FILENAME}${MMPROJ_ARG}${EMBEDDING_ARGS}"
     proxy: "http://127.0.0.1:\${PORT}"
     ttl: 300
 EOF
@@ -499,7 +497,7 @@ if [[ -n "$MTP_FILENAME" ]]; then
   
   cat <<EOF >> "$CONFIG_FILE"
   "${MTP_KEY}":
-    cmd: "llama-server --port \${PORT} --model /models/${REPO_ID}/${FILENAME} --model-draft /models/${REPO_ID}/${MTP_FILENAME}${MMPROJ_ARG}${EMBEDDING_ARGS} -c ${CTX_SIZE} --threads 4"
+    cmd: "llama-server --port \${PORT} --model /models/${REPO_ID}/${FILENAME} --model-draft /models/${REPO_ID}/${MTP_FILENAME} --spec-type draft-mtp --spec-draft-n-max 2${MMPROJ_ARG}${EMBEDDING_ARGS}"
     proxy: "http://127.0.0.1:\${PORT}"
     ttl: 300
 EOF
