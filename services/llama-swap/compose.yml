@@ -17,6 +17,10 @@ services:
       - "traefik.http.routers.llama-swap.tls.certresolver=letsencrypt"
       - "traefik.http.services.llama-swap.loadbalancer.server.port=8080"
       - "traefik.docker.network=proxy"
+      - "traefik.http.routers.llama-swap-local.rule=Host(`ollama.homeserver.com`)"
+      - "traefik.http.routers.llama-swap-local.entrypoints=websecure"
+      - "traefik.http.routers.llama-swap-local.tls=true"
+      - "traefik.http.routers.llama-swap-local.service=llama-swap"
 
 networks:
   proxy:

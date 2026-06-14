@@ -15,6 +15,10 @@ services:
       - "traefik.http.routers.kiwix.tls.certresolver=letsencrypt"
       - "traefik.http.services.kiwix.loadbalancer.server.port=8080"
       - "traefik.docker.network=proxy"
+      - "traefik.http.routers.kiwix-local.rule=Host(`kiwix.homeserver.com`)"
+      - "traefik.http.routers.kiwix-local.entrypoints=websecure"
+      - "traefik.http.routers.kiwix-local.tls=true"
+      - "traefik.http.routers.kiwix-local.service=kiwix"
 
 networks:
   proxy:

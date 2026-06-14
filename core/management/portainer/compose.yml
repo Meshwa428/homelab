@@ -16,6 +16,10 @@ services:
       - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
       - "traefik.docker.network=proxy"
+      - "traefik.http.routers.portainer-local.rule=Host(`portainer.homeserver.com`)"
+      - "traefik.http.routers.portainer-local.entrypoints=websecure"
+      - "traefik.http.routers.portainer-local.tls=true"
+      - "traefik.http.routers.portainer-local.service=portainer"
 
 networks:
   proxy:

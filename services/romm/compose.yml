@@ -53,6 +53,10 @@ services:
       - "traefik.http.routers.romm.tls.certresolver=letsencrypt"
       - "traefik.http.services.romm.loadbalancer.server.port=8080"
       - "traefik.docker.network=proxy"
+      - "traefik.http.routers.romm-local.rule=Host(`romm.homeserver.com`)"
+      - "traefik.http.routers.romm-local.entrypoints=websecure"
+      - "traefik.http.routers.romm-local.tls=true"
+      - "traefik.http.routers.romm-local.service=romm"
 
 networks:
   proxy:

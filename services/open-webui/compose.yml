@@ -21,6 +21,10 @@ services:
       - "traefik.http.routers.open-webui.tls.certresolver=letsencrypt"
       - "traefik.http.services.open-webui.loadbalancer.server.port=8080"
       - "traefik.docker.network=proxy"
+      - "traefik.http.routers.open-webui-local.rule=Host(`ai.homeserver.com`)"
+      - "traefik.http.routers.open-webui-local.entrypoints=websecure"
+      - "traefik.http.routers.open-webui-local.tls=true"
+      - "traefik.http.routers.open-webui-local.service=open-webui"
 
 networks:
   proxy:

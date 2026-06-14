@@ -26,6 +26,10 @@ services:
       - "traefik.http.routers.copyparty.tls.certresolver=letsencrypt"
       - "traefik.http.services.copyparty.loadbalancer.server.port=3923"
       - "traefik.docker.network=proxy"
+      - "traefik.http.routers.copyparty-local.rule=Host(`copyparty.homeserver.com`)"
+      - "traefik.http.routers.copyparty-local.entrypoints=websecure"
+      - "traefik.http.routers.copyparty-local.tls=true"
+      - "traefik.http.routers.copyparty-local.service=copyparty"
 
 networks:
   proxy:

@@ -34,6 +34,10 @@ services:
       - "traefik.http.routers.vscode.tls.certresolver=letsencrypt"
       - "traefik.http.services.vscode.loadbalancer.server.port=8080"
       - "traefik.docker.network=proxy"
+      - "traefik.http.routers.vscode-local.rule=Host(`vscode.homeserver.com`)"
+      - "traefik.http.routers.vscode-local.entrypoints=websecure"
+      - "traefik.http.routers.vscode-local.tls=true"
+      - "traefik.http.routers.vscode-local.service=vscode"
 
 networks:
   proxy:

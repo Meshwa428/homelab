@@ -24,6 +24,10 @@ services:
       - "traefik.http.routers.wud.tls.certresolver=letsencrypt"
       - "traefik.http.services.wud.loadbalancer.server.port=3000"
       - "traefik.docker.network=proxy"
+      - "traefik.http.routers.wud-local.rule=Host(`wud.homeserver.com`)"
+      - "traefik.http.routers.wud-local.entrypoints=websecure"
+      - "traefik.http.routers.wud-local.tls=true"
+      - "traefik.http.routers.wud-local.service=wud"
 
 networks:
   proxy:

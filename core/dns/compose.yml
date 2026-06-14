@@ -35,6 +35,10 @@ services:
       - "traefik.http.routers.adguard.tls.certresolver=letsencrypt"
       - "traefik.http.services.adguard.loadbalancer.server.port=80"
       - "traefik.docker.network=proxy"
+      - "traefik.http.routers.adguard-local.rule=Host(`adguard.homeserver.com`)"
+      - "traefik.http.routers.adguard-local.entrypoints=websecure"
+      - "traefik.http.routers.adguard-local.tls=true"
+      - "traefik.http.routers.adguard-local.service=adguard"
 
 networks:
   proxy:
