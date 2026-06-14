@@ -260,8 +260,8 @@ except Exception as e:
     print(f'ERROR: Failed to list files for repo {repo}: {e}', file=sys.stderr)
     sys.exit(1)
 
-# Main GGUF model resolution (exclude mmproj files from main model matching)
-gguf_files = [f for f in files if f.lower().endswith('.gguf') and 'mmproj' not in f.lower()]
+# Main GGUF model resolution (exclude mmproj and mtp/mpt files from main model matching)
+gguf_files = [f for f in files if f.lower().endswith('.gguf') and 'mmproj' not in f.lower() and 'mtp' not in f.lower() and 'mpt' not in f.lower()]
 matching = [f for f in gguf_files if quant in f.lower()]
 
 if not matching:
@@ -310,6 +310,21 @@ print(f'Found target file: {target_file}')
 if mmproj_target:
     print(f'Found mmproj file: {mmproj_target}')
 
+# MTP file resolution
+mtp_files = [f for f in files if f.lower().endswith('.gguf') and ('mtp' in f.lower() or 'mpt' in f.lower())]
+mtp_target = None
+
+if mtp_files:
+    # Match user quant if possible, otherwise first mtp file
+    mtp_match = [f for f in mtp_files if quant in f.lower()]
+    if mtp_match:
+        mtp_target = mtp_match[0]
+    else:
+        mtp_target = mtp_files[0]
+
+if mtp_target:
+    print(f'Found MTP drafter file: {mtp_target}')
+
 local_dir = f'/models/{repo}'
 target_local_path = os.path.join(local_dir, os.path.basename(target_file))
 
@@ -354,10 +369,33 @@ if mmproj_target:
             print(f'ERROR: mmproj download failed: {e}', file=sys.stderr)
             sys.exit(1)
 
+# Download MTP if found
+mtp_downloaded_name = None
+if mtp_target:
+    mtp_local_path = os.path.join(local_dir, os.path.basename(mtp_target))
+    if os.path.exists(mtp_local_path):
+        print(f'MTP file already exists: {mtp_local_path}. Skipping download.')
+        mtp_downloaded_name = os.path.basename(mtp_target)
+    else:
+        print('Starting MTP download...')
+        try:
+            mtp_path = hf_hub_download(
+                repo_id=repo,
+                filename=mtp_target,
+                local_dir=local_dir,
+                local_dir_use_symlinks=False
+            )
+            mtp_downloaded_name = os.path.basename(mtp_path)
+            print('MTP download completed successfully!')
+        except Exception as e:
+            print(f'ERROR: MTP download failed: {e}', file=sys.stderr)
+            sys.exit(1)
+
 # Save results
 result = {
     'model': main_downloaded_name,
     'mmproj': mmproj_downloaded_name,
+    'mtp': mtp_downloaded_name,
     'warning': mmproj_warning,
     'is_embedding': is_embedding,
     'pooling': pooling
@@ -374,6 +412,7 @@ try:
         data = json.load(f)
     print(data.get('model', ''))
     print(data.get('mmproj', '') or '')
+    print(data.get('mtp', '') or '')
     print(data.get('warning', '') or '')
     print('true' if data.get('is_embedding') else 'false')
     print(data.get('pooling', '') or '')
@@ -383,9 +422,10 @@ except Exception as e:
   
   FILENAME=$(echo "$PARSED_JSON" | sed -n '1p')
   MMPROJ_FILENAME=$(echo "$PARSED_JSON" | sed -n '2p')
-  MMPROJ_WARNING=$(echo "$PARSED_JSON" | sed -n '3p')
-  IS_EMBEDDING=$(echo "$PARSED_JSON" | sed -n '4p')
-  POOLING=$(echo "$PARSED_JSON" | sed -n '5p')
+  MTP_FILENAME=$(echo "$PARSED_JSON" | sed -n '3p')
+  MMPROJ_WARNING=$(echo "$PARSED_JSON" | sed -n '4p')
+  IS_EMBEDDING=$(echo "$PARSED_JSON" | sed -n '5p')
+  POOLING=$(echo "$PARSED_JSON" | sed -n '6p')
   
   rm -f "$SUCCESS_FILE_HOST"
 else
@@ -401,10 +441,11 @@ if ! grep -q "^models:" "$CONFIG_FILE" 2>/dev/null; then
   echo "models:" >> "$CONFIG_FILE"
 fi
 
-# --- Remove existing block for this key if present --------------------------
-if grep -q "^  ${MODEL_KEY}:" "$CONFIG_FILE" 2>/dev/null || grep -q "^  \"${MODEL_KEY}\":" "$CONFIG_FILE" 2>/dev/null; then
-  warn "Key '${MODEL_KEY}' already exists — overwriting..."
-  python3 - "$CONFIG_FILE" "$MODEL_KEY" <<'PYEOF'
+remove_config_key() {
+  local key="$1"
+  if grep -q "^  ${key}:" "$CONFIG_FILE" 2>/dev/null || grep -q "^  \"${key}\":" "$CONFIG_FILE" 2>/dev/null; then
+    warn "Key '${key}' already exists — overwriting..."
+    python3 - "$CONFIG_FILE" "$key" <<'PYEOF'
 import sys, re
 config_path, key = sys.argv[1], sys.argv[2]
 with open(config_path) as f:
@@ -420,7 +461,10 @@ for line in lines:
 with open(config_path, 'w') as f:
     f.writelines(out)
 PYEOF
-fi
+  fi
+}
+
+remove_config_key "$MODEL_KEY"
 
 # --- Append new model block -------------------------------------------------
 MMPROJ_ARG=""
@@ -448,6 +492,21 @@ EOF
 
 echo ""
 info "Registered ${BOLD}${MODEL_KEY}${NC} in services/llama-swap/config.yaml"
+
+if [[ -n "$MTP_FILENAME" ]]; then
+  MTP_KEY="${MODEL_KEY}-mtp"
+  remove_config_key "$MTP_KEY"
+  
+  cat <<EOF >> "$CONFIG_FILE"
+  "${MTP_KEY}":
+    cmd: "llama-server --port \${PORT} --model /models/${REPO_ID}/${FILENAME} --model-draft /models/${REPO_ID}/${MTP_FILENAME}${MMPROJ_ARG}${EMBEDDING_ARGS} -c ${CTX_SIZE} --threads 4"
+    proxy: "http://127.0.0.1:\${PORT}"
+    ttl: 300
+EOF
+
+  info "Registered ${BOLD}${MTP_KEY}${NC} in services/llama-swap/config.yaml (with MTP drafter)"
+fi
+
 echo ""
 
 # --- Auto-Restart llama-swap ------------------------------------------------
