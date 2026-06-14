@@ -57,3 +57,4 @@ apple-music-downloader/
 # CLI workspace folders
 .antigravitycli/
 
+*.bak
