@@ -138,18 +138,45 @@ if [[ -z "$MODEL_KEY" ]]; then
   MODEL_KEY="${REPO_ID}:${QUANT,,}"
 fi
 
+# --- Quick host-side embedding pre-detection (before Docker) ----------------
+# Skip if user already passed --embedding explicitly
+if [[ "$EMBEDDING" != "true" ]]; then
+  EMBEDDING=$(python3 -c "
+import urllib.request, json, sys
+try:
+    url = 'https://huggingface.co/api/models/$REPO_ID'
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=8) as r:
+        info = json.loads(r.read().decode('utf-8'))
+    pt = info.get('pipeline_tag', '')
+    lb = info.get('library_name', '')
+    tags = info.get('tags', [])
+    if (pt in ('feature-extraction', 'sentence-similarity') or
+        lb == 'sentence-transformers' or
+        any(t in tags for t in ('sentence-transformers', 'sentence-similarity', 'feature-extraction'))):
+        print('true')
+    else:
+        print('false')
+except:
+    print('false')
+" 2>/dev/null || echo "false")
+  if [[ "$EMBEDDING" == "true" && -z "$POOLING" ]]; then
+    POOLING="mean"
+  fi
+fi
+
 # --- Run the downloader inside python container -----------------------------
 header "Downloading from Hugging Face"
 step "Repo:  ${BOLD}${REPO_ID}${NC}"
 step "Quant: ${BOLD}${QUANT}${NC}"
 step "Key:   ${BOLD}${MODEL_KEY}${NC}"
+if [[ "$EMBEDDING" == "true" ]]; then
+  step "Type:  ${BOLD}Embedding Model${NC}  ${DIM}(pooling: ${POOLING:-mean})${NC}"
+fi
 if [[ -n "$MMPROJ_QUANT" ]]; then
   step "Projector Quant Preference: ${BOLD}${MMPROJ_QUANT}${NC}"
 fi
-if [[ "$EMBEDDING" == "true" ]]; then
-  step "Forced Embedding Model: ${BOLD}true${NC}"
-fi
-if [[ -n "$POOLING" ]]; then
+if [[ -n "$POOLING" && "$EMBEDDING" != "true" ]]; then
   step "Pooling Strategy Override: ${BOLD}${POOLING}${NC}"
 fi
 echo ""
