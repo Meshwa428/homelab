@@ -27,19 +27,388 @@ step()   { echo -e "  ${CYAN}→${NC}  $*"; }
 header() { echo -e "\n${BOLD}${CYAN}$*${NC}\n"; }
 
 # =============================================================================
-# Service commands — delegate to manage.sh
+# Per-command help functions
 # =============================================================================
 
-cmd_up()      { "$SCRIPTS_DIR/manage.sh" up "$@"; }
-cmd_down()    { "$SCRIPTS_DIR/manage.sh" down "$@"; }
-cmd_restart() { "$SCRIPTS_DIR/manage.sh" restart "$@"; }
-cmd_logs()    { "$SCRIPTS_DIR/manage.sh" logs "$@"; }
-cmd_pull()    { "$SCRIPTS_DIR/manage.sh" pull "$@"; }
-cmd_remove()  { "$SCRIPTS_DIR/manage.sh" remove "$@"; }
-cmd_delete()  { "$SCRIPTS_DIR/manage.sh" delete "$@"; }
-cmd_status()  { "$SCRIPTS_DIR/manage.sh" status; }
-cmd_heal()    { "$SCRIPTS_DIR/manage.sh" heal "$@"; }
-cmd_list()    { "$SCRIPTS_DIR/manage.sh" list; }
+help_up() {
+  cat <<'EOF'
+
+EOF
+  cat <<EOF
+${BOLD}./lab up${NC} ${DIM}[service...]${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Start one or more services, or all services if none are specified.
+  Boot order is resolved automatically via the dependency graph.
+
+${BOLD}ARGUMENTS${NC}
+  ${CYAN}[service...]${NC}   Zero or more service names. Omit to start all services.
+
+${BOLD}BEHAVIOR${NC}
+  For each service, the current health state is checked first:
+    ${GREEN}running${NC}   Prompts to recreate (--force-recreate)
+    ${YELLOW}exited${NC}    Prompts to start existing containers
+    ${YELLOW}partial${NC}   Prompts to recreate all, or just start missing
+    ${DIM}missing${NC}   Pulls images, then creates and starts
+  Dependencies are always started before the services that need them.
+
+${BOLD}EDGE CASES${NC}
+  Unknown service names error before anything starts.
+  Stopping vpn will drop Tailscale/SSH if you are connected remotely.
+
+${BOLD}EXAMPLES${NC}
+  ./lab up                    # Start all services
+  ./lab up traefik            # Start traefik (vpn dep resolved first)
+  ./lab up open-webui         # Starts llama-swap dep first
+  ./lab up dns traefik        # Multiple services, dep-ordered
+
+EOF
+}
+
+help_down() {
+  cat <<EOF
+
+${BOLD}./lab down${NC} ${DIM}[service...]${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Stop one or more services, or all services if none are specified.
+  Stops in reverse dependency order.
+
+${BOLD}ARGUMENTS${NC}
+  ${CYAN}[service...]${NC}   Zero or more service names. Omit to stop all services.
+
+${BOLD}BEHAVIOR${NC}
+  No args: stops ALL services in reverse boot order.
+  With args: stops only named services in reverse dep order.
+  Always asks you to type ${BOLD}yes${NC} (not just y) before proceeding.
+  Extra warning shown if vpn is in the stop list.
+
+${BOLD}EDGE CASES${NC}
+  Confirmation requires exactly "yes" not "y" or "Y".
+  Stopping vpn drops Tailscale/SSH access if you are remote.
+
+${BOLD}EXAMPLES${NC}
+  ./lab down                  # Stop everything
+  ./lab down open-webui       # Stop one service
+  ./lab down dns traefik      # Stop multiple
+
+EOF
+}
+
+help_restart() {
+  cat <<EOF
+
+${BOLD}./lab restart${NC} ${CYAN}<service...>${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Force-recreate one or more service containers without pulling new images.
+  Use this to pick up config changes (e.g., after editing config.yaml or .env).
+
+${BOLD}ARGUMENTS${NC}
+  ${CYAN}<service...>${NC}   One or more service names (required).
+
+${BOLD}BEHAVIOR${NC}
+  Runs: docker compose up -d --force-recreate
+  Does NOT pull new images — use ./lab pull for that.
+  Does NOT follow dependency order — only named services are restarted.
+
+${BOLD}EXAMPLES${NC}
+  ./lab restart llama-swap
+  ./lab restart open-webui traefik
+
+EOF
+}
+
+help_logs() {
+  cat <<EOF
+
+${BOLD}./lab logs${NC} ${CYAN}<service>${NC} ${DIM}[docker-flags...]${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Follow the live log output of a service container.
+  Press Ctrl+C to stop following.
+
+${BOLD}ARGUMENTS${NC}
+  ${CYAN}<service>${NC}          Service name (required).
+  ${CYAN}[docker-flags]${NC}     Any flags passed through to docker compose logs.
+
+${BOLD}PASS-THROUGH FLAGS${NC}
+  ${CYAN}--tail <n>${NC}         Show last n lines before following
+  ${CYAN}--since <dur>${NC}      Show logs since a duration (e.g., 30m, 1h)
+  ${CYAN}--no-follow${NC}        Print logs and exit without following
+
+${BOLD}EXAMPLES${NC}
+  ./lab logs llama-swap
+  ./lab logs traefik --tail 50
+  ./lab logs open-webui --since 30m
+  ./lab logs nginx --no-follow
+
+EOF
+}
+
+help_pull() {
+  cat <<EOF
+
+${BOLD}./lab pull${NC} ${DIM}[service...]${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Pull the latest Docker image(s) from the registry.
+  Does NOT restart services automatically.
+
+${BOLD}ARGUMENTS${NC}
+  ${CYAN}[service...]${NC}   Zero or more service names. Omit to pull all images.
+
+${BOLD}BEHAVIOR${NC}
+  Runs: docker compose pull for each target.
+  After pulling, restart with: ./lab restart <service>
+
+${BOLD}EXAMPLES${NC}
+  ./lab pull                  # Pull all images
+  ./lab pull llama-swap       # Pull one service
+  ./lab pull traefik nginx    # Pull multiple
+
+EOF
+}
+
+help_remove() {
+  cat <<EOF
+
+${BOLD}./lab remove${NC} ${CYAN}<service...>${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Stop and remove containers for a service, keeping all files on disk.
+  Config, data, and compose files are untouched.
+
+${BOLD}ARGUMENTS${NC}
+  ${CYAN}<service...>${NC}   One or more service names (required).
+
+${BOLD}BEHAVIOR${NC}
+  Shows a warning and requires typing ${BOLD}yes${NC} to proceed per service.
+  Runs: docker compose down
+  Files (configs, volumes, compose.yml) are kept on disk.
+
+${BOLD}EDGE CASES${NC}
+  Different from ${BOLD}delete${NC} — delete also removes the entire service directory.
+
+${BOLD}EXAMPLES${NC}
+  ./lab remove open-webui
+  ./lab remove llama-swap traefik
+
+EOF
+}
+
+help_delete() {
+  cat <<EOF
+
+${BOLD}./lab delete${NC} ${CYAN}<service...>${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Stop containers AND permanently delete the entire service directory.
+  ${RED}This is irreversible. All config, data, and containers are destroyed.${NC}
+
+${BOLD}ARGUMENTS${NC}
+  ${CYAN}<service...>${NC}   One or more service names (required).
+
+${BOLD}BEHAVIOR${NC}
+  Shows a DANGER warning with the full directory path.
+  Requires typing the ${BOLD}exact service name${NC} to confirm (not "yes").
+  Stops containers, then runs: sudo rm -rf <service_dir>
+  Removes the service entry from scripts/services.dep automatically.
+
+${BOLD}EDGE CASES${NC}
+  If deleted service was a dependency for others, update services.dep manually.
+
+${BOLD}EXAMPLES${NC}
+  ./lab delete my-test-service
+
+EOF
+}
+
+help_status() {
+  cat <<EOF
+
+${BOLD}./lab status${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Print a health table for all auto-discovered services.
+
+${BOLD}BEHAVIOR${NC}
+  Fetches all container states in a single docker ps call.
+  For each service shows:
+    SERVICE     Service name
+    HEALTH      ${GREEN}running${NC}  ${YELLOW}partial${NC}  ${RED}exited${NC}  ${DIM}missing${NC}
+    CONTAINERS  Container names and individual states
+
+${BOLD}SUMMARY LINE${NC}
+  All healthy    All services running.
+  Any unhealthy  Some services not healthy. Run ./lab heal to fix.
+
+${BOLD}EXAMPLES${NC}
+  ./lab status
+
+EOF
+}
+
+help_heal() {
+  cat <<EOF
+
+${BOLD}./lab heal${NC} ${DIM}[blacklist [add|remove <service>]]${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Start any crashed or missing services. Also manages the heal blacklist.
+
+${BOLD}SUBCOMMANDS${NC}
+  ${CYAN}(none)${NC}                            Heal all unhealthy services
+  ${CYAN}blacklist${NC}                         List services excluded from healing
+  ${CYAN}blacklist add <service>${NC}           Add a service to the blacklist
+  ${CYAN}blacklist remove <service>${NC}        Remove a service from the blacklist
+
+${BOLD}HEAL BEHAVIOR${NC}
+  Iterates all services in boot order:
+    ${GREEN}running${NC}   Prints "healthy", skips
+    ${YELLOW}partial${NC}   Runs: docker compose up -d
+    ${RED}exited${NC}    Runs: docker compose up -d
+    ${DIM}missing${NC}   Runs: docker compose up -d
+  Blacklisted services are skipped with a note.
+
+${BOLD}BLACKLIST${NC}
+  Stored as HEAL_BLACKLIST in shared/.env (comma-separated).
+  Blacklisting does NOT stop a service — only prevents auto-healing.
+  add    Validates service exists, appends to HEAL_BLACKLIST
+  remove Removes from HEAL_BLACKLIST (alias: rm also accepted)
+
+${BOLD}EDGE CASES${NC}
+  Blacklisting an already-blacklisted service prints a warning.
+  Removing a non-blacklisted service prints a warning.
+
+${BOLD}EXAMPLES${NC}
+  ./lab heal
+  ./lab heal blacklist
+  ./lab heal blacklist add llama-swap
+  ./lab heal blacklist remove llama-swap
+
+EOF
+}
+
+help_list() {
+  cat <<EOF
+
+${BOLD}./lab list${NC}
+
+${BOLD}DESCRIPTION${NC}
+  List all auto-discovered services with compose file path,
+  declared dependencies, and topological boot order.
+
+${BOLD}OUTPUT COLUMNS${NC}
+  ${BOLD}NAME${NC}          Service name (directory containing compose.yml)
+  ${BOLD}COMPOSE FILE${NC}  Relative path to the compose.yml
+  ${BOLD}DEPENDS ON${NC}    Space-separated deps from services.dep, or -- if none
+
+${BOLD}EDGE CASES${NC}
+  Services without a compose.yml are not shown.
+  Dependencies are declared in scripts/services.dep.
+
+${BOLD}EXAMPLES${NC}
+  ./lab list
+
+EOF
+}
+
+help_network() {
+  cat <<EOF
+
+${BOLD}./lab network${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Ensure the shared ${BOLD}proxy${NC} Docker network exists. Idempotent.
+
+${BOLD}BEHAVIOR${NC}
+  Network exists   Prints "proxy network already exists"
+  Network missing  Runs: docker network create proxy
+
+${BOLD}EDGE CASES${NC}
+  Must be run before starting any service that uses network: proxy
+  in its compose.yml.
+
+${BOLD}EXAMPLES${NC}
+  ./lab network
+
+EOF
+}
+
+help_completions() {
+  cat <<EOF
+
+${BOLD}./lab completions${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Print the Zsh autocompletion script for ./lab to stdout.
+  Pipe it to a file and source it to enable tab completions.
+
+${BOLD}COVERAGE${NC}
+  All top-level commands with descriptions
+  Service name completion for up, down, restart, logs, pull, remove, delete
+  heal blacklist add/remove with service name completion
+  model subcommands with model key completion for remove
+  kiwix subcommands with live category/file completion (cached, 24h TTL)
+
+${BOLD}SETUP${NC}
+  mkdir -p ~/.zsh/completions
+  ./lab completions > ~/.zsh/completions/_lab
+  # Add to ~/.zshrc if not already present:
+  #   fpath=(~/.zsh/completions \$fpath)
+  #   autoload -Uz compinit && compinit
+
+${BOLD}EXAMPLES${NC}
+  ./lab completions > ~/.zsh/completions/_lab
+
+EOF
+}
+
+# =============================================================================
+# Service commands — delegate to manage.sh (with -h interception)
+# =============================================================================
+
+cmd_up() {
+  [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_up; exit 0; }
+  "$SCRIPTS_DIR/manage.sh" up "$@"
+}
+cmd_down() {
+  [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_down; exit 0; }
+  "$SCRIPTS_DIR/manage.sh" down "$@"
+}
+cmd_restart() {
+  [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_restart; exit 0; }
+  "$SCRIPTS_DIR/manage.sh" restart "$@"
+}
+cmd_logs() {
+  [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_logs; exit 0; }
+  "$SCRIPTS_DIR/manage.sh" logs "$@"
+}
+cmd_pull() {
+  [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_pull; exit 0; }
+  "$SCRIPTS_DIR/manage.sh" pull "$@"
+}
+cmd_remove() {
+  [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_remove; exit 0; }
+  "$SCRIPTS_DIR/manage.sh" remove "$@"
+}
+cmd_delete() {
+  [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_delete; exit 0; }
+  "$SCRIPTS_DIR/manage.sh" delete "$@"
+}
+cmd_status() {
+  [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_status; exit 0; }
+  "$SCRIPTS_DIR/manage.sh" status
+}
+cmd_heal() {
+  [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_heal; exit 0; }
+  "$SCRIPTS_DIR/manage.sh" heal "$@"
+}
+cmd_list() {
+  [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_list; exit 0; }
+  "$SCRIPTS_DIR/manage.sh" list
+}
 
 # =============================================================================
 # model subcommands
@@ -296,15 +665,13 @@ ${BOLD}./lab model${NC} — Manage llama-swap models
 
 ${BOLD}SUBCOMMANDS${NC}
   ${CYAN}pull <repo[:quant]> [key] [options]${NC}   Download model from HuggingFace and register it
-  ${CYAN}remote <repo_id>${NC}                    List all available quants in a remote HuggingFace repo
-  ${CYAN}list${NC}                                List all registered models in config
-  ${CYAN}files${NC}                               List downloaded GGUF files with sizes
-  ${CYAN}remove <key>${NC}                        Remove a model from config (optionally delete file)
+  ${CYAN}remote <repo_id>${NC}                      List all available quants in a remote HuggingFace repo
+  ${CYAN}list${NC}                                  List all registered models in config
+  ${CYAN}files${NC}                                 List downloaded GGUF files with sizes
+  ${CYAN}remove <key>${NC}                          Remove a model from config (optionally delete file)
 
-${BOLD}OPTIONS (for pull)${NC}
-  ${CYAN}--mmproj-quant <quant>${NC}           Preferred quantization for vision projector file (default: f16)
-  ${CYAN}--embedding${NC}                      Explicitly mark model as an embedding model
-  ${CYAN}--pooling <strategy>${NC}             Custom pooling strategy for embedding models (e.g. mean, cls)
+${BOLD}TIPS${NC}
+  Run ${BOLD}./lab model <subcommand> --help${NC} for detailed help on any subcommand.
 
 ${BOLD}EXAMPLES${NC}
   ./lab model remote openbmb/MiniCPM-V-4.6-Thinking-gguf
@@ -317,17 +684,129 @@ ${BOLD}EXAMPLES${NC}
 EOF
 }
 
+help_model_pull() {
+  LAB_INVOKED=1 "$SCRIPTS_DIR/hf-pull.sh" --help
+}
+
+help_model_remote() {
+  cat <<EOF
+
+${BOLD}./lab model remote${NC} ${CYAN}<repo_id>${NC}
+
+${BOLD}DESCRIPTION${NC}
+  List all available GGUF files (quants) in a remote Hugging Face repository.
+  The PULL COMMAND column shows the exact command to copy-paste and run.
+
+${BOLD}ARGUMENTS${NC}
+  ${CYAN}<repo_id>${NC}   HuggingFace repository ID, without a quant suffix (required).
+
+${BOLD}OUTPUT COLUMNS${NC}
+  ${BOLD}GGUF FILE${NC}       Filename as it exists in the repository
+  ${BOLD}DETECTED TAG${NC}    Quantization tag extracted from the filename
+  ${BOLD}PULL COMMAND${NC}    Ready-to-run ./lab model pull command
+
+${BOLD}EDGE CASES${NC}
+  404 response    Repository not found.
+  401/403         Repository is private — set HF_TOKEN in shared/.env.
+  No GGUF files   Warning printed, exits successfully.
+
+${BOLD}EXAMPLES${NC}
+  ./lab model remote openbmb/MiniCPM-V-4.6-Thinking-gguf
+  ./lab model remote bartowski/Mistral-7B-Instruct-v0.3-GGUF
+
+EOF
+}
+
+help_model_list() {
+  cat <<EOF
+
+${BOLD}./lab model list${NC}
+
+${BOLD}DESCRIPTION${NC}
+  List all models registered in services/llama-swap/config.yaml.
+  Entries are grouped by base repository, showing all registered quants.
+
+${BOLD}OUTPUT COLUMNS${NC}
+  ${BOLD}KEY / REPOSITORY${NC}   Base repo ID (or custom key if set)
+  ${BOLD}TTL${NC}                Auto-unload timeout in seconds
+  ${BOLD}QUANTS AVAILABLE${NC}   Quantization variants registered for this repo
+
+${BOLD}EXAMPLES${NC}
+  ./lab model list
+
+EOF
+}
+
+help_model_files() {
+  cat <<EOF
+
+${BOLD}./lab model files${NC}
+
+${BOLD}DESCRIPTION${NC}
+  List all downloaded .gguf files in services/llama-swap/models/ with disk sizes.
+
+${BOLD}OUTPUT COLUMNS${NC}
+  ${BOLD}FILE${NC}   Path relative to the models directory
+  ${BOLD}SIZE${NC}   Human-readable disk size (e.g., 4.2G)
+
+${BOLD}EXAMPLES${NC}
+  ./lab model files
+
+EOF
+}
+
+help_model_remove() {
+  cat <<EOF
+
+${BOLD}./lab model remove${NC} ${CYAN}<key>${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Remove a model from config.yaml and optionally delete its files from disk.
+
+${BOLD}ARGUMENTS${NC}
+  ${CYAN}<key>${NC}   Model key exactly as it appears in config.yaml (required).
+
+${BOLD}BEHAVIOR${NC}
+  1. Validates the key exists in config.yaml.
+  2. Shows the key, model file path, and mmproj path (if any).
+  3. Prompts: "Also delete the model and projector files from disk? [y/N]"
+  4. Removes the config block from config.yaml.
+  5. If y: deletes model file, mmproj (if any), parent dir, org dir if empty.
+  6. Reminds you to restart llama-swap to apply the change.
+
+${BOLD}EDGE CASES${NC}
+  File deletion uses sudo rm — may require sudo password.
+  Parent org directory only removed if it becomes empty after deletion.
+  Does NOT auto-restart llama-swap. Run: ./lab restart llama-swap
+
+${BOLD}EXAMPLES${NC}
+  ./lab model remove mistral
+  ./lab model remove "bartowski/Mistral-7B-Instruct-v0.3-GGUF:q5_k_m"
+
+EOF
+}
+
 cmd_model() {
   local sub="${1:-}"
   [[ -z "$sub" ]] && { model_usage; exit 0; }
   shift
   case "$sub" in
     -h|--help|help) model_usage ;;
-    pull)   model_pull "$@" ;;
-    remote) model_remote "$@" ;;
-    list)   model_list ;;
-    files)  model_files ;;
-    remove) model_remove "$@" ;;
+    pull)
+      [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_model_pull; exit 0; }
+      model_pull "$@" ;;
+    remote)
+      [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_model_remote; exit 0; }
+      model_remote "$@" ;;
+    list)
+      [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_model_list; exit 0; }
+      model_list ;;
+    files)
+      [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_model_files; exit 0; }
+      model_files ;;
+    remove)
+      [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_model_remove; exit 0; }
+      model_remove "$@" ;;
     *)      error "Unknown model subcommand: '$sub'. Run './lab model' for help." ;;
   esac
 }
@@ -393,28 +872,133 @@ kiwix_usage() {
 ${BOLD}./lab kiwix${NC} — Manage Kiwix offline content library
 
 ${BOLD}SUBCOMMANDS${NC}
-  ${CYAN}list${NC}                          List all available categories on Kiwix
-  ${CYAN}browse <category>${NC}             List files in a category (use --lang to filter)
-  ${CYAN}pull <category> [...]${NC}          Download latest ZIM(s) for a category
-  ${CYAN}file <category> <filename>${NC}     Download one exact file by name
-  ${CYAN}file <url>${NC}                     Download one exact file by URL
-  ${CYAN}status${NC}                        Show downloaded ZIM files and sizes
+  ${CYAN}list${NC}                           List all available categories on Kiwix
+  ${CYAN}browse <category>${NC}              List files in a category (--lang to filter)
+  ${CYAN}pull <category> [...]${NC}           Download latest ZIM(s) for a category
+  ${CYAN}file <category> <filename>${NC}      Download one exact file by name
+  ${CYAN}file <url>${NC}                      Download one exact file by URL
+  ${CYAN}status${NC}                         Show downloaded ZIM files and sizes
 
-${BOLD}OPTIONS${NC}  ${DIM}(pass after the subcommand)${NC}
-  ${CYAN}--lang <code>${NC}                 Language filter (default: en)
-  ${CYAN}--all-lang${NC}                    Download all languages
-  ${CYAN}--dry-run${NC}                     Preview without downloading
+${BOLD}TIPS${NC}
+  Run ${BOLD}./lab kiwix <subcommand> --help${NC} for detailed help on any subcommand.
 
 ${BOLD}EXAMPLES${NC}
   ./lab kiwix list
   ./lab kiwix browse wikipedia
+  ./lab kiwix pull devdocs
+  ./lab kiwix status
+
+EOF
+}
+
+help_kiwix_list() {
+  cat <<EOF
+
+${BOLD}./lab kiwix list${NC}
+
+${BOLD}DESCRIPTION${NC}
+  List all available content categories on the Kiwix download server.
+  Fetches the live directory index from https://download.kiwix.org/zim/.
+
+${BOLD}EDGE CASES${NC}
+  Requires network access.
+  Categories are parsed from the live HTML directory listing.
+
+${BOLD}EXAMPLES${NC}
+  ./lab kiwix list
+
+EOF
+}
+
+help_kiwix_browse() {
+  cat <<EOF
+
+${BOLD}./lab kiwix browse${NC} ${CYAN}<category>${NC} ${DIM}[--lang <code>] [--all-lang]${NC}
+
+${BOLD}DESCRIPTION${NC}
+  List all available ZIM files within a specific Kiwix category.
+
+${BOLD}ARGUMENTS${NC}
+  ${CYAN}<category>${NC}   Category name (required). Run: ./lab kiwix list
+
+${BOLD}OPTIONS${NC}
+  ${CYAN}--lang <code>${NC}   Filter by language code (default: en)
+  ${CYAN}--all-lang${NC}      Show all language variants
+
+${BOLD}EXAMPLES${NC}
+  ./lab kiwix browse wikipedia
   ./lab kiwix browse wikipedia --lang fr
+  ./lab kiwix browse devdocs --all-lang
+
+EOF
+}
+
+help_kiwix_pull() {
+  cat <<EOF
+
+${BOLD}./lab kiwix pull${NC} ${CYAN}<category...>${NC} ${DIM}[--lang <code>] [--all-lang] [--dry-run]${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Download the latest ZIM file(s) for one or more Kiwix categories.
+  Files are saved to services/kiwix/data/.
+
+${BOLD}ARGUMENTS${NC}
+  ${CYAN}<category...>${NC}   One or more category names (required).
+
+${BOLD}OPTIONS${NC}
+  ${CYAN}--lang <code>${NC}   Language code to filter by (default: en)
+  ${CYAN}--all-lang${NC}      Download all language variants
+  ${CYAN}--dry-run${NC}       Show what would be downloaded without downloading
+
+${BOLD}EXAMPLES${NC}
   ./lab kiwix pull devdocs
   ./lab kiwix pull freecodecamp stack_exchange
   ./lab kiwix pull wikipedia --lang de
   ./lab kiwix pull devdocs --dry-run
+
+EOF
+}
+
+help_kiwix_file() {
+  cat <<EOF
+
+${BOLD}./lab kiwix file${NC} ${CYAN}<category> <filename>${NC}
+${BOLD}./lab kiwix file${NC} ${CYAN}<url>${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Download one specific ZIM file by exact name or by full URL.
+
+${BOLD}FORM 1 — by name${NC}
+  ${CYAN}<category>${NC}   Category the file belongs to (required)
+  ${CYAN}<filename>${NC}   Exact ZIM filename (required)
+  Use ${BOLD}./lab kiwix browse <category>${NC} to find available filenames.
+
+${BOLD}FORM 2 — by URL${NC}
+  ${CYAN}<url>${NC}   Full URL to the ZIM file (must start with http)
+
+${BOLD}EXAMPLES${NC}
   ./lab kiwix file wikipedia wikipedia_en_all_2026-02.zim
   ./lab kiwix file https://download.kiwix.org/zim/other/archlinux_en_all_maxi_2025-09.zim
+
+EOF
+}
+
+help_kiwix_status() {
+  cat <<EOF
+
+${BOLD}./lab kiwix status${NC}
+
+${BOLD}DESCRIPTION${NC}
+  Show all downloaded ZIM files in services/kiwix/data/ and their disk sizes.
+
+${BOLD}OUTPUT${NC}
+  ${BOLD}FILE${NC}   ZIM filename
+  ${BOLD}SIZE${NC}   Human-readable disk size
+
+${BOLD}EDGE CASES${NC}
+  If no ZIM files found, prints a tip to run ./lab kiwix pull <category>.
+
+${BOLD}EXAMPLES${NC}
   ./lab kiwix status
 
 EOF
@@ -425,11 +1009,22 @@ cmd_kiwix() {
   [[ -z "$sub" ]] && { kiwix_usage; exit 0; }
   shift
   case "$sub" in
-    list)    kiwix_list ;;
-    browse)  kiwix_browse "$@" ;;
-    pull)    kiwix_pull "$@" ;;
-    file)    kiwix_file "$@" ;;
-    status)  kiwix_status ;;
+    -h|--help|help) kiwix_usage ;;
+    list)
+      [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_kiwix_list; exit 0; }
+      kiwix_list ;;
+    browse)
+      [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_kiwix_browse; exit 0; }
+      kiwix_browse "$@" ;;
+    pull)
+      [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_kiwix_pull; exit 0; }
+      kiwix_pull "$@" ;;
+    file)
+      [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_kiwix_file; exit 0; }
+      kiwix_file "$@" ;;
+    status)
+      [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_kiwix_status; exit 0; }
+      kiwix_status ;;
     *)       error "Unknown kiwix subcommand: '$sub'. Run './lab kiwix' for help." ;;
   esac
 }
@@ -438,70 +1033,141 @@ cmd_kiwix() {
 # network command
 # =============================================================================
 cmd_network() {
-  docker network inspect proxy >/dev/null 2>&1 \
+  [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_network; exit 0; }
+  docker network inspect proxy > /dev/null 2>&1 \
     && echo "  proxy network already exists" \
     || (docker network create proxy && info "proxy network created")
 }
 
 # =============================================================================
-# Usage
+# Usage — full command reference
 # =============================================================================
 usage() {
   cat <<EOF
 
-${BOLD}Homelab CLI${NC}  ${DIM}(./lab)${NC}
+${BOLD}${CYAN}Homelab CLI${NC}  ${DIM}./lab <command> [args...]${NC}
 
+${DIM}Tip: Run ${BOLD}./lab <command> --help${NC}${DIM} for detailed help on any command.${NC}
+${DIM}     Run ${BOLD}./lab <command> <subcommand> --help${NC}${DIM} for subcommand help.${NC}
+
+──────────────────────────────────────────────────────────────────
 ${BOLD}SERVICE COMMANDS${NC}
-  ${CYAN}./lab up [service]${NC}            Start all services, or a specific one
-  ${CYAN}./lab down [service]${NC}          Stop all services, or a specific one
-  ${CYAN}./lab restart <service>${NC}       Recreate a service container
-  ${CYAN}./lab logs <service>${NC}          Follow logs (Ctrl+C to exit)
-  ${CYAN}./lab pull [service]${NC}          Pull latest image(s) from registry
-  ${CYAN}./lab remove <service>${NC}        Stop and remove containers (keeps files)
-  ${CYAN}./lab delete <service>${NC}        Remove containers AND delete service dir
+──────────────────────────────────────────────────────────────────
 
+  ${CYAN}./lab up${NC} ${DIM}[service...]${NC}
+    Start all services in dep order, or specific ones.
+    Checks health first — prompts before recreating running containers.
+
+  ${CYAN}./lab down${NC} ${DIM}[service...]${NC}
+    Stop all services in reverse dep order, or specific ones.
+    Requires typing ${BOLD}yes${NC} to confirm. Warns if vpn is included.
+
+  ${CYAN}./lab restart${NC} ${CYAN}<service...>${NC}
+    Force-recreate containers without pulling images.
+    Use after config changes (editing .env, config.yaml, etc).
+
+  ${CYAN}./lab logs${NC} ${CYAN}<service>${NC} ${DIM}[--tail <n>] [--since <dur>] [--no-follow]${NC}
+    Follow live container logs. Press Ctrl+C to stop.
+
+  ${CYAN}./lab pull${NC} ${DIM}[service...]${NC}
+    Pull latest Docker image(s). Does not restart automatically.
+    Run ./lab restart <service> afterward to apply.
+
+  ${CYAN}./lab remove${NC} ${CYAN}<service...>${NC}
+    Stop and remove containers. Config and data files kept on disk.
+
+  ${CYAN}./lab delete${NC} ${CYAN}<service...>${NC}
+    ${RED}Permanently stop containers AND delete the service directory.${NC}
+    Requires typing the exact service name to confirm.
+
+──────────────────────────────────────────────────────────────────
 ${BOLD}FLEET COMMANDS${NC}
-  ${CYAN}./lab status${NC}                  Health table for all services
-  ${CYAN}./lab heal${NC}                    Start any crashed or missing services
-  ${CYAN}./lab heal blacklist${NC}          List services excluded from healing
-  ${CYAN}./lab heal blacklist add <src>${NC}  Add a service to the heal blacklist
-  ${CYAN}./lab heal blacklist remove <src>${NC} Remove a service from the heal blacklist
-  ${CYAN}./lab list${NC}                    List all services with deps and boot order
-  ${CYAN}./lab network${NC}                 Ensure the shared proxy network exists
-  ${CYAN}./lab completions${NC}             Print Zsh autocompletion script
+──────────────────────────────────────────────────────────────────
 
-${BOLD}MODEL COMMANDS${NC}  ${DIM}(llama-swap)${NC}
-  ${CYAN}./lab model pull <repo[:quant]> [key]${NC}
-                                Download & register a model from HuggingFace
-  ${CYAN}./lab model remote <repo_id>${NC}
-                                List all available quants in a remote HuggingFace repo
-  ${CYAN}./lab model list${NC}              List registered models and their keys
-  ${CYAN}./lab model files${NC}             List downloaded GGUF files with sizes
-  ${CYAN}./lab model remove <key>${NC}      Remove model from config (optionally disk)
+  ${CYAN}./lab status${NC}
+    Health table: ${GREEN}running${NC} / ${YELLOW}partial${NC} / ${RED}exited${NC} / ${DIM}missing${NC} for every service.
 
-${BOLD}KIWIX COMMANDS${NC}  ${DIM}(offline library)${NC}
-  ${CYAN}./lab kiwix list${NC}              List all available categories
-  ${CYAN}./lab kiwix browse <category>${NC} Browse files in a category
-  ${CYAN}./lab kiwix pull <category>${NC}   Download latest ZIM(s) for a category
-  ${CYAN}./lab kiwix file <cat> <name>${NC} Download one exact file
-  ${CYAN}./lab kiwix status${NC}            Show downloaded ZIM files and sizes
+  ${CYAN}./lab heal${NC}
+    Start any crashed or missing services (respects blacklist).
 
-${BOLD}EXAMPLES${NC}
+  ${CYAN}./lab heal blacklist${NC}
+    List services excluded from auto-healing.
+
+  ${CYAN}./lab heal blacklist add${NC} ${CYAN}<service>${NC}
+    Add a service to the heal blacklist (persisted in shared/.env).
+
+  ${CYAN}./lab heal blacklist remove${NC} ${CYAN}<service>${NC}
+    Remove a service from the heal blacklist.
+
+  ${CYAN}./lab list${NC}
+    All services with compose path, deps, and topological boot order.
+
+  ${CYAN}./lab network${NC}
+    Ensure the shared ${BOLD}proxy${NC} Docker network exists (idempotent).
+
+  ${CYAN}./lab completions${NC}
+    Print Zsh autocompletion script. Pipe to ~/.zsh/completions/_lab.
+
+──────────────────────────────────────────────────────────────────
+${BOLD}MODEL COMMANDS${NC}  ${DIM}(llama-swap · ./lab model --help)${NC}
+──────────────────────────────────────────────────────────────────
+
+  ${CYAN}./lab model pull${NC} ${CYAN}<repo[:quant]>${NC} ${DIM}[key] [--mmproj-quant <q>] [--embedding] [--pooling <s>]${NC}
+    Download & register a GGUF from HuggingFace.
+    Auto-detects embedding models and vision projector files.
+    Skips files already on disk (resume-safe).
+
+  ${CYAN}./lab model remote${NC} ${CYAN}<repo_id>${NC}
+    List all available GGUF quants in a remote HuggingFace repo.
+    PULL COMMAND column shows the exact command ready to run.
+
+  ${CYAN}./lab model list${NC}
+    Registered models grouped by repo with TTL and quants.
+
+  ${CYAN}./lab model files${NC}
+    Downloaded .gguf files with disk sizes.
+
+  ${CYAN}./lab model remove${NC} ${CYAN}<key>${NC}
+    Remove from config.yaml (optionally delete files from disk).
+
+──────────────────────────────────────────────────────────────────
+${BOLD}KIWIX COMMANDS${NC}  ${DIM}(offline library · ./lab kiwix --help)${NC}
+──────────────────────────────────────────────────────────────────
+
+  ${CYAN}./lab kiwix list${NC}
+    All available content categories on the Kiwix download server.
+
+  ${CYAN}./lab kiwix browse${NC} ${CYAN}<category>${NC} ${DIM}[--lang <code>] [--all-lang]${NC}
+    ZIM files available in a category, filtered by language.
+
+  ${CYAN}./lab kiwix pull${NC} ${CYAN}<category...>${NC} ${DIM}[--lang <code>] [--all-lang] [--dry-run]${NC}
+    Download latest ZIM(s) for one or more categories.
+
+  ${CYAN}./lab kiwix file${NC} ${CYAN}<category> <filename>${NC}  ${DIM}or${NC}  ${CYAN}./lab kiwix file${NC} ${CYAN}<url>${NC}
+    Download one specific ZIM file by name or full URL.
+
+  ${CYAN}./lab kiwix status${NC}
+    Downloaded ZIM files and their disk sizes.
+
+──────────────────────────────────────────────────────────────────
+${BOLD}QUICK EXAMPLES${NC}
+──────────────────────────────────────────────────────────────────
+
   ./lab up                             # Start everything
-  ./lab up traefik                     # Start just traefik (starts vpn dep first)
+  ./lab up traefik                     # vpn dep resolved first
   ./lab down                           # Stop everything
-  ./lab status                         # View health of all services
+  ./lab status                         # Health of all services
   ./lab heal                           # Recover crashed services
-  ./lab restart open-webui             # Recreate open-webui container
-  ./lab logs llama-swap                # Tail llama-swap logs
+  ./lab restart open-webui             # Recreate one container
+  ./lab logs llama-swap                # Tail logs
   ./lab model remote openbmb/MiniCPM-V-4.6-Thinking-gguf
   ./lab model pull openbmb/MiniCPM-V-4.6-Thinking-gguf:Q4_K_M
-  ./lab model pull bartowski/Mistral-7B-Instruct-v0.3-GGUF:Q5_K_M mistral
+  ./lab model pull BAAI/bge-large-en-v1.5-gguf:Q4_K_M --pooling cls
   ./lab model list
   ./lab model remove mistral
-  ./lab kiwix list                       # See available Kiwix categories
-  ./lab kiwix pull devdocs               # Download DevDocs offline
-  ./lab kiwix status                     # View downloaded ZIM files
+  ./lab kiwix list
+  ./lab kiwix pull devdocs
+  ./lab kiwix status
 
 EOF
 }
@@ -510,6 +1176,7 @@ EOF
 # Completions command
 # =============================================================================
 cmd_completions() {
+  [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]] && { help_completions; exit 0; }
   cat <<'COMP'
 #compdef lab
 
@@ -704,13 +1371,13 @@ case "$COMMAND" in
   pull)    cmd_pull "$@" ;;
   remove)  cmd_remove "$@" ;;
   delete)  cmd_delete "$@" ;;
-  status)  cmd_status ;;
+  status)  cmd_status "$@" ;;
   heal)    cmd_heal "$@" ;;
-  list)    cmd_list ;;
-  network) cmd_network ;;
+  list)    cmd_list "$@" ;;
+  network) cmd_network "$@" ;;
   model)   cmd_model "$@" ;;
   kiwix)   cmd_kiwix "$@" ;;
-  completions) cmd_completions ;;
+  completions) cmd_completions "$@" ;;
   help|--help|-h) usage ;;
   *)       error "Unknown command: '$COMMAND'. Run './lab help'" ;;
 esac
