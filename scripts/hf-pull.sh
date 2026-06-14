@@ -469,7 +469,15 @@ check_idle() {
     return 0
   fi
 
-  if python3 -c "import sys, json; data=json.loads(sys.argv[1]); sys.exit(0 if len(data.get('running', [])) == 0 else 1)" "$json" 2>/dev/null; then
+  # "ready"    = model loaded but idle   → safe to restart
+  # "starting" = model actively loading  → wait
+  # Anything else (stopping, stopped)    → safe to restart
+  if python3 -c "
+import sys, json
+data = json.loads(sys.argv[1])
+busy = [m for m in data.get('running', []) if m.get('state') == 'starting']
+sys.exit(1 if busy else 0)
+" "$json" 2>/dev/null; then
     return 0
   else
     return 1
@@ -480,8 +488,7 @@ if check_idle; then
   info "llama-swap is idle. Restarting immediately to apply changes..."
   "$HOMELAB_DIR/lab" restart llama-swap
 else
-  warn "llama-swap is currently active (serving models or processing requests)."
-  step "Waiting for llama-swap to become idle before restarting..."
+  warn "llama-swap is loading a model — waiting for it to finish before restarting..."
   while ! check_idle; do
     sleep 5
   done
