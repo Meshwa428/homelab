@@ -326,12 +326,11 @@ if mtp_target:
     print(f'Found MTP drafter file: {mtp_target}')
 
 local_dir = f'/models/{repo}'
-target_local_path = os.path.join(local_dir, os.path.basename(target_file))
+target_local_path = os.path.join(local_dir, target_file)
 
 # Healing / Resume: check if model already downloaded
 if os.path.exists(target_local_path):
     print(f'Main model file already exists: {target_local_path}. Skipping download.')
-    main_downloaded_name = os.path.basename(target_file)
 else:
     print('Starting model download...')
     try:
@@ -341,19 +340,16 @@ else:
             local_dir=local_dir,
             local_dir_use_symlinks=False
         )
-        main_downloaded_name = os.path.basename(path)
         print('Model download completed successfully!')
     except Exception as e:
         print(f'ERROR: Download failed: {e}', file=sys.stderr)
         sys.exit(1)
 
 # Download mmproj if found
-mmproj_downloaded_name = None
 if mmproj_target:
-    mmproj_local_path = os.path.join(local_dir, os.path.basename(mmproj_target))
+    mmproj_local_path = os.path.join(local_dir, mmproj_target)
     if os.path.exists(mmproj_local_path):
         print(f'mmproj file already exists: {mmproj_local_path}. Skipping download.')
-        mmproj_downloaded_name = os.path.basename(mmproj_target)
     else:
         print('Starting mmproj download...')
         try:
@@ -370,12 +366,10 @@ if mmproj_target:
             sys.exit(1)
 
 # Download MTP if found
-mtp_downloaded_name = None
 if mtp_target:
-    mtp_local_path = os.path.join(local_dir, os.path.basename(mtp_target))
+    mtp_local_path = os.path.join(local_dir, mtp_target)
     if os.path.exists(mtp_local_path):
         print(f'MTP file already exists: {mtp_local_path}. Skipping download.')
-        mtp_downloaded_name = os.path.basename(mtp_target)
     else:
         print('Starting MTP download...')
         try:
