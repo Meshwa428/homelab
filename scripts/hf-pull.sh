@@ -43,25 +43,58 @@ usage() {
 ${BOLD}hf-pull.sh${NC} — Download & register a GGUF model from Hugging Face
 
 ${BOLD}USAGE${NC}
-  ./scripts/hf-pull.sh <repo_id[:quant]> [model_key]
+  ./scripts/hf-pull.sh <repo_id[:quant]> [model_key] [options]
 
 ${BOLD}ARGUMENTS${NC}
   repo_id[:quant]   HuggingFace repo and optional quantization tag (e.g., Q4_K_M)
                     Defaults to Q4_K_M if omitted
   model_key         Key to register in llama-swap config (auto-derived if omitted)
 
+${BOLD}OPTIONS${NC}
+  --mmproj-quant    Quantization tag to prefer for mmproj vision projector file (default: f16)
+
 ${BOLD}EXAMPLES${NC}
   ./scripts/hf-pull.sh openbmb/MiniCPM-V-4.6-Thinking-gguf:Q4_K_M
   ./scripts/hf-pull.sh bartowski/Mistral-7B-Instruct-v0.3-GGUF:Q5_K_M mistral
+  ./scripts/hf-pull.sh openbmb/MiniCPM-V-4.6-Thinking-gguf:Q4_K_M --mmproj-quant f16
 
 EOF
   exit 1
 }
 
-[[ $# -lt 1 ]] && usage
+HF_REF=""
+MODEL_KEY=""
+MMPROJ_QUANT=""
 
-HF_REF="$1"
-MODEL_KEY="${2:-}"
+# Parse options and arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mmproj-quant)
+      if [[ $# -lt 2 ]]; then
+        error "--mmproj-quant requires an argument."
+      fi
+      MMPROJ_QUANT="$2"
+      shift 2
+      ;;
+    -*)
+      error "Unknown option: $1"
+      ;;
+    *)
+      if [[ -z "$HF_REF" ]]; then
+        HF_REF="$1"
+      elif [[ -z "$MODEL_KEY" ]]; then
+        MODEL_KEY="$1"
+      else
+        error "Unexpected positional argument: $1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$HF_REF" ]]; then
+  usage
+fi
 
 # Parse repo and quant
 REPO_ID="${HF_REF%%:*}"
@@ -84,6 +117,9 @@ header "Downloading from Hugging Face"
 step "Repo:  ${BOLD}${REPO_ID}${NC}"
 step "Quant: ${BOLD}${QUANT}${NC}"
 step "Key:   ${BOLD}${MODEL_KEY}${NC}"
+if [[ -n "$MMPROJ_QUANT" ]]; then
+  step "Projector Quant Preference: ${BOLD}${MMPROJ_QUANT}${NC}"
+fi
 echo ""
 
 # We use huggingface_hub inside Python with hf_transfer enabled for maximum speed.
@@ -110,20 +146,25 @@ fi
 docker run --rm $TTY_FLAG \
   --name "hf-puller-${SAFE_KEY}" \
   -v "$MODELS_DIR:/models" \
-  -e HF_HUB_ENABLE_HF_TRANSFER=1 \
-  -e HF_XET_HIGH_PERFORMANCE=1 \
+  -e HF_HUB_ENABLE_HF_TRANSFER=0 \
   -e HF_HOME=/models/.cache \
+  -e REPO_ID="$REPO_ID" \
+  -e QUANT="$QUANT" \
+  -e MODEL_KEY="$MODEL_KEY" \
+  -e MMPROJ_QUANT="$MMPROJ_QUANT" \
+  -e SUCCESS_FILE_CONTAINER="$SUCCESS_FILE_CONTAINER" \
   "${ENV_ARGS[@]}" \
   -e PYTHONUNBUFFERED=1 \
   python:3.10-slim \
-  sh -c "pip install -q huggingface_hub hf_transfer && \
+  sh -c "pip install -q huggingface_hub && \
          python3 -u -c \"
-import os, sys
+import os, sys, json
 from huggingface_hub import hf_hub_download, list_repo_files
 
-repo = '$REPO_ID'
-quant = '$QUANT'.lower()
-model_key = '$MODEL_KEY'
+repo = os.environ['REPO_ID']
+quant = os.environ['QUANT'].lower()
+model_key = os.environ['MODEL_KEY']
+mmproj_quant = os.environ.get('MMPROJ_QUANT', '').lower() or None
 
 try:
     files = list_repo_files(repo)
@@ -131,7 +172,8 @@ except Exception as e:
     print(f'ERROR: Failed to list files for repo {repo}: {e}', file=sys.stderr)
     sys.exit(1)
 
-gguf_files = [f for f in files if f.lower().endswith('.gguf')]
+# Main GGUF model resolution (exclude mmproj files from main model matching)
+gguf_files = [f for f in files if f.lower().endswith('.gguf') and 'mmproj' not in f.lower()]
 matching = [f for f in gguf_files if quant in f.lower()]
 
 if not matching:
@@ -143,30 +185,121 @@ if not matching:
         sys.exit(1)
 
 target_file = matching[0]
-print(f'Found target file: {target_file}')
-print('Starting download...')
 
-try:
-    path = hf_hub_download(
-        repo_id=repo,
-        filename=target_file,
-        local_dir=f'/models/{repo}',
-        local_dir_use_symlinks=False
-    )
-    # Save the successful filename to the temp file
-    with open('$SUCCESS_FILE_CONTAINER', 'w') as f:
-        f.write(os.path.basename(path))
-    print('Download completed successfully!')
-except Exception as e:
-    print(f'ERROR: Download failed: {e}', file=sys.stderr)
-    sys.exit(1)
+# mmproj file resolution
+mmproj_files = [f for f in files if f.lower().endswith('.gguf') and 'mmproj' in f.lower()]
+mmproj_target = None
+mmproj_warning = None
+
+if mmproj_files:
+    # Try user-requested quant
+    if mmproj_quant:
+        mmproj_match = [f for f in mmproj_files if mmproj_quant in f.lower()]
+        if mmproj_match:
+            mmproj_target = mmproj_match[0]
+        else:
+            mmproj_warning = f'Requested mmproj quant \\'{mmproj_quant}\\' not found.'
+    
+    # Try default f16
+    if not mmproj_target:
+        f16_match = [f for f in mmproj_files if 'f16' in f.lower()]
+        if f16_match:
+            mmproj_target = f16_match[0]
+            if mmproj_quant and not mmproj_warning:
+                mmproj_warning = f'Requested mmproj quant \\'{mmproj_quant}\\' not found. Falling back to default \\'f16\\'.'
+        else:
+            # Fallback to the first available mmproj
+            mmproj_target = mmproj_files[0]
+            if mmproj_quant:
+                mmproj_warning = f'Requested mmproj quant \\'{mmproj_quant}\\' and default \\'f16\\' not found. Falling back to \\'{os.path.basename(mmproj_target)}\\'.'
+            else:
+                mmproj_warning = f'Default mmproj \\'f16\\' not found. Falling back to \\'{os.path.basename(mmproj_target)}\\'.'
+else:
+    if mmproj_quant:
+        mmproj_warning = 'No mmproj files found in repository.'
+
+print(f'Found target file: {target_file}')
+if mmproj_target:
+    print(f'Found mmproj file: {mmproj_target}')
+
+local_dir = f'/models/{repo}'
+target_local_path = os.path.join(local_dir, os.path.basename(target_file))
+
+# Healing / Resume: check if model already downloaded
+if os.path.exists(target_local_path):
+    print(f'Main model file already exists: {target_local_path}. Skipping download.')
+    main_downloaded_name = os.path.basename(target_file)
+else:
+    print('Starting model download...')
+    try:
+        path = hf_hub_download(
+            repo_id=repo,
+            filename=target_file,
+            local_dir=local_dir,
+            local_dir_use_symlinks=False
+        )
+        main_downloaded_name = os.path.basename(path)
+        print('Model download completed successfully!')
+    except Exception as e:
+        print(f'ERROR: Download failed: {e}', file=sys.stderr)
+        sys.exit(1)
+
+# Download mmproj if found
+mmproj_downloaded_name = None
+if mmproj_target:
+    mmproj_local_path = os.path.join(local_dir, os.path.basename(mmproj_target))
+    if os.path.exists(mmproj_local_path):
+        print(f'mmproj file already exists: {mmproj_local_path}. Skipping download.')
+        mmproj_downloaded_name = os.path.basename(mmproj_target)
+    else:
+        print('Starting mmproj download...')
+        try:
+            mmproj_path = hf_hub_download(
+                repo_id=repo,
+                filename=mmproj_target,
+                local_dir=local_dir,
+                local_dir_use_symlinks=False
+            )
+            mmproj_downloaded_name = os.path.basename(mmproj_path)
+            print('mmproj download completed successfully!')
+        except Exception as e:
+            print(f'ERROR: mmproj download failed: {e}', file=sys.stderr)
+            sys.exit(1)
+
+# Save results
+result = {
+    'model': main_downloaded_name,
+    'mmproj': mmproj_downloaded_name,
+    'warning': mmproj_warning
+}
+with open(os.environ['SUCCESS_FILE_CONTAINER'], 'w') as f:
+    json.dump(result, f)
 \""
 
 if [[ -f "$SUCCESS_FILE_HOST" ]]; then
-  FILENAME=$(cat "$SUCCESS_FILE_HOST")
+  PARSED_JSON=$(python3 -c "
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+    print(data.get('model', ''))
+    print(data.get('mmproj', '') or '')
+    print(data.get('warning', '') or '')
+except Exception as e:
+    sys.exit(1)
+" "$SUCCESS_FILE_HOST")
+  
+  FILENAME=$(echo "$PARSED_JSON" | sed -n '1p')
+  MMPROJ_FILENAME=$(echo "$PARSED_JSON" | sed -n '2p')
+  MMPROJ_WARNING=$(echo "$PARSED_JSON" | sed -n '3p')
+  
   rm -f "$SUCCESS_FILE_HOST"
 else
   error "Download failed or target file could not be determined."
+fi
+
+if [[ -n "$MMPROJ_WARNING" ]]; then
+  warn "$MMPROJ_WARNING"
 fi
 
 # --- Ensure config has models: root -----------------------------------------
@@ -196,9 +329,14 @@ PYEOF
 fi
 
 # --- Append new model block -------------------------------------------------
+MMPROJ_ARG=""
+if [[ -n "$MMPROJ_FILENAME" ]]; then
+  MMPROJ_ARG=" --mmproj /models/${REPO_ID}/${MMPROJ_FILENAME}"
+fi
+
 cat <<EOF >> "$CONFIG_FILE"
   "${MODEL_KEY}":
-    cmd: "llama-server --port \${PORT} --model /models/${REPO_ID}/${FILENAME} -c 2048 --threads 4"
+    cmd: "llama-server --port \${PORT} --model /models/${REPO_ID}/${FILENAME}${MMPROJ_ARG} -c 2048 --threads 4"
     proxy: "http://127.0.0.1:\${PORT}"
     ttl: 300
 EOF

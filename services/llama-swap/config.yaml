@@ -20,9 +20,9 @@ models:
   #   proxy: "http://127.0.0.1:${PORT}"
   #   ttl: 300
   "unsloth/Qwen3.5-0.8B-GGUF:q8_0":
-    cmd: "llama-server --port ${PORT} --model /models/unsloth/Qwen3.5-0.8B-GGUF/Qwen3.5-0.8B-Q8_0.gguf -c 2048 --threads 4"
+    cmd: "llama-server --port ${PORT} --model /models/unsloth/Qwen3.5-0.8B-GGUF/Qwen3.5-0.8B-Q8_0.gguf -c 2048 --threads 4 --threads-batch 4 --cache-reuse 256 --mlock"
     proxy: "http://127.0.0.1:${PORT}"
-    ttl: 300
+    ttl: 86400
   "openbmb/MiniCPM-V-4.6-Thinking-gguf:q4_k_m":
     cmd: "llama-server --port ${PORT} --model /models/openbmb/MiniCPM-V-4.6-Thinking-gguf/MiniCPM-V-4_6-Thinking-Q4_K_M.gguf -c 2048 --threads 4"
     proxy: "http://127.0.0.1:${PORT}"
@@ -41,5 +41,13 @@ models:
     ttl: 300
   "qwopus-mtp":
     cmd: "llama-server --port ${PORT} --model /models/Jackrong/Qwopus3.5-9B-Coder-MTP-GGUF/Qwopus3.5-9B-Coder-MTP-Q4_K_M.gguf -c 2048 --threads 2 --spec-type draft-mtp --spec-draft-n-max 2"
+    proxy: "http://127.0.0.1:${PORT}"
+    ttl: 300
+  "gemma-e2b":
+    cmd: "llama-server --port ${PORT} --model /models/unsloth/gemma-3n-E2B-it-GGUF/gemma-3n-E2B-it-Q4_K_M.gguf -c 2048 --threads 4 --threads-batch 4 --cache-reuse 256 --mlock"
+    proxy: "http://127.0.0.1:${PORT}"
+    ttl: 86400
+  "bartowski/smolagents_SmolVLM2-2.2B-Instruct-Agentic-GUI-GGUF:q4_k_m":
+    cmd: "llama-server --port ${PORT} --model /models/bartowski/smolagents_SmolVLM2-2.2B-Instruct-Agentic-GUI-GGUF/smolagents_SmolVLM2-2.2B-Instruct-Agentic-GUI-Q4_K_M.gguf --mmproj /models/bartowski/smolagents_SmolVLM2-2.2B-Instruct-Agentic-GUI-GGUF/mmproj-smolagents_SmolVLM2-2.2B-Instruct-Agentic-GUI-bf16.gguf -c 2048 --threads 4"
     proxy: "http://127.0.0.1:${PORT}"
     ttl: 300
