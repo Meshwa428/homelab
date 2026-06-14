@@ -322,7 +322,7 @@ cmd_model() {
   [[ -z "$sub" ]] && { model_usage; exit 0; }
   shift
   case "$sub" in
-    -h|--help) model_usage ;;
+    -h|--help|help) model_usage ;;
     pull)   model_pull "$@" ;;
     remote) model_remote "$@" ;;
     list)   model_list ;;
