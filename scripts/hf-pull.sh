@@ -38,12 +38,19 @@ step()   { echo -e "  ${CYAN}→${NC}  $*"; }
 header() { echo -e "\n${BOLD}${CYAN}$*${NC}\n"; }
 
 usage() {
+  # Adapt command name depending on whether we're called via ./lab or directly
+  if [[ -n "${LAB_INVOKED:-}" ]]; then
+    local CMD="./lab model pull"
+  else
+    local CMD="./scripts/hf-pull.sh"
+  fi
+
   cat <<EOF
 
-${BOLD}hf-pull.sh${NC} — Download & register a GGUF model from Hugging Face
+${BOLD}${CMD}${NC} — Download & register a GGUF model from Hugging Face
 
 ${BOLD}USAGE${NC}
-  ./scripts/hf-pull.sh <repo_id[:quant]> [model_key] [options]
+  ${CMD} <repo_id[:quant]> [model_key] [options]
 
 ${BOLD}ARGUMENTS${NC}
   repo_id[:quant]   HuggingFace repo and optional quantization tag (e.g., Q4_K_M)
@@ -56,10 +63,10 @@ ${BOLD}OPTIONS${NC}
   --pooling <strat> Custom pooling strategy for embedding models (e.g. mean, cls)
 
 ${BOLD}EXAMPLES${NC}
-  ./scripts/hf-pull.sh openbmb/MiniCPM-V-4.6-Thinking-gguf:Q4_K_M
-  ./scripts/hf-pull.sh bartowski/Mistral-7B-Instruct-v0.3-GGUF:Q5_K_M mistral
-  ./scripts/hf-pull.sh nomic-ai/nomic-embed-text-v1.5-GGUF:Q4_K_M
-  ./scripts/hf-pull.sh BAAI/bge-large-en-v1.5-gguf:Q4_K_M --pooling cls
+  ${CMD} openbmb/MiniCPM-V-4.6-Thinking-gguf:Q4_K_M
+  ${CMD} bartowski/Mistral-7B-Instruct-v0.3-GGUF:Q5_K_M mistral
+  ${CMD} nomic-ai/nomic-embed-text-v1.5-GGUF:Q4_K_M
+  ${CMD} BAAI/bge-large-en-v1.5-gguf:Q4_K_M --pooling cls
 
 EOF
   exit 1

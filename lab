@@ -51,7 +51,7 @@ MODELS_DIR="$HOMELAB_DIR/services/llama-swap/models"
 # model pull <repo[:quant]> [key]
 model_pull() {
   [[ $# -lt 1 ]] && { model_usage; exit 1; }
-  "$SCRIPTS_DIR/hf-pull.sh" "$@"
+  LAB_INVOKED=1 "$SCRIPTS_DIR/hf-pull.sh" "$@"
 }
 
 # model list
