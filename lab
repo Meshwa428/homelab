@@ -295,16 +295,21 @@ model_usage() {
 ${BOLD}./lab model${NC} — Manage llama-swap models
 
 ${BOLD}SUBCOMMANDS${NC}
-  ${CYAN}pull <repo[:quant]> [key]${NC}   Download model from HuggingFace and register it
-  ${CYAN}remote <repo_id>${NC}            List all available quants in a remote HuggingFace repo
-  ${CYAN}list${NC}                        List all registered models in config
-  ${CYAN}files${NC}                       List downloaded GGUF files with sizes
-  ${CYAN}remove <key>${NC}                Remove a model from config (optionally delete file)
+  ${CYAN}pull <repo[:quant]> [key] [options]${NC}   Download model from HuggingFace and register it
+  ${CYAN}remote <repo_id>${NC}                    List all available quants in a remote HuggingFace repo
+  ${CYAN}list${NC}                                List all registered models in config
+  ${CYAN}files${NC}                               List downloaded GGUF files with sizes
+  ${CYAN}remove <key>${NC}                        Remove a model from config (optionally delete file)
+
+${BOLD}OPTIONS (for pull)${NC}
+  ${CYAN}--mmproj-quant <quant>${NC}           Preferred quantization for vision projector file (default: f16)
+  ${CYAN}--embedding${NC}                      Explicitly mark model as an embedding model
+  ${CYAN}--pooling <strategy>${NC}             Custom pooling strategy for embedding models (e.g. mean, cls)
 
 ${BOLD}EXAMPLES${NC}
   ./lab model remote openbmb/MiniCPM-V-4.6-Thinking-gguf
   ./lab model pull openbmb/MiniCPM-V-4.6-Thinking-gguf:Q4_K_M
-  ./lab model pull bartowski/Mistral-7B-Instruct-v0.3-GGUF:Q5_K_M mistral
+  ./lab model pull BAAI/bge-large-en-v1.5-gguf:Q4_K_M --pooling cls
   ./lab model list
   ./lab model files
   ./lab model remove mistral
@@ -317,6 +322,7 @@ cmd_model() {
   [[ -z "$sub" ]] && { model_usage; exit 0; }
   shift
   case "$sub" in
+    -h|--help) model_usage ;;
     pull)   model_pull "$@" ;;
     remote) model_remote "$@" ;;
     list)   model_list ;;
