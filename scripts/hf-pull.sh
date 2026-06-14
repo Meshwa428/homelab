@@ -393,9 +393,9 @@ if mtp_target:
 
 # Save results
 result = {
-    'model': main_downloaded_name,
-    'mmproj': mmproj_downloaded_name,
-    'mtp': mtp_downloaded_name,
+    'model': target_file,
+    'mmproj': mmproj_target if mmproj_target else '',
+    'mtp': mtp_target if mtp_target else '',
     'warning': mmproj_warning,
     'is_embedding': is_embedding,
     'pooling': pooling
