@@ -138,28 +138,36 @@ if [[ -z "$MODEL_KEY" ]]; then
   MODEL_KEY="${REPO_ID}:${QUANT,,}"
 fi
 
-# --- Quick host-side embedding pre-detection (before Docker) ----------------
-# Skip if user already passed --embedding explicitly
-if [[ "$EMBEDDING" != "true" ]]; then
-  EMBEDDING=$(python3 -c "
+# --- Quick host-side API pre-detection (before Docker) ------------------------
+PRE_DETECT=$(python3 -c "
 import urllib.request, json, sys
 try:
     url = 'https://huggingface.co/api/models/$REPO_ID'
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     with urllib.request.urlopen(req, timeout=8) as r:
         info = json.loads(r.read().decode('utf-8'))
+    
+    files = [s.get('rfilename', '').lower() for s in info.get('siblings', [])]
+    has_mtp = 'true' if any('mtp' in f or 'mpt' in f for f in files) else 'false'
+    has_mmproj = 'true' if any('mmproj' in f for f in files) else 'false'
+
     pt = info.get('pipeline_tag', '')
     lb = info.get('library_name', '')
     tags = info.get('tags', [])
-    if (pt in ('feature-extraction', 'sentence-similarity') or
-        lb == 'sentence-transformers' or
-        any(t in tags for t in ('sentence-transformers', 'sentence-similarity', 'feature-extraction'))):
-        print('true')
-    else:
-        print('false')
+    is_emb = 'true' if (pt in ('feature-extraction', 'sentence-similarity') or
+                        lb == 'sentence-transformers' or
+                        any(t in tags for t in ('sentence-transformers', 'sentence-similarity', 'feature-extraction'))) else 'false'
+    
+    print(f'{is_emb} {has_mtp} {has_mmproj}')
 except:
-    print('false')
-" 2>/dev/null || echo "false")
+    print('false false false')
+" 2>/dev/null || echo "false false false")
+
+read -r PRE_EMB HAS_MTP HAS_MMPROJ <<< "$PRE_DETECT"
+
+# Skip if user already passed --embedding explicitly
+if [[ "$EMBEDDING" != "true" ]]; then
+  EMBEDDING="$PRE_EMB"
   if [[ "$EMBEDDING" == "true" && -z "$POOLING" ]]; then
     POOLING="mean"
   fi
@@ -172,6 +180,12 @@ step "Quant: ${BOLD}${QUANT}${NC}"
 step "Key:   ${BOLD}${MODEL_KEY}${NC}"
 if [[ "$EMBEDDING" == "true" ]]; then
   step "Type:  ${BOLD}Embedding Model${NC}  ${DIM}(pooling: ${POOLING:-mean})${NC}"
+fi
+if [[ "$HAS_MTP" == "true" ]]; then
+  step "Type:  ${BOLD}Includes MTP Drafter${NC} ${DIM}(will auto-download)${NC}"
+fi
+if [[ "$HAS_MMPROJ" == "true" ]]; then
+  step "Type:  ${BOLD}Includes Vision Proj${NC} ${DIM}(will auto-download)${NC}"
 fi
 if [[ -n "$MMPROJ_QUANT" ]]; then
   step "Projector Quant Preference: ${BOLD}${MMPROJ_QUANT}${NC}"
@@ -422,6 +436,16 @@ except Exception as e:
   POOLING=$(echo "$PARSED_JSON" | sed -n '6p')
   
   rm -f "$SUCCESS_FILE_HOST"
+  
+  echo ""
+  header "Download Summary"
+  step "Main Model: ${BOLD}${FILENAME}${NC}"
+  if [[ -n "$MMPROJ_FILENAME" ]]; then
+    step "Vision Proj: ${BOLD}${MMPROJ_FILENAME}${NC}"
+  fi
+  if [[ -n "$MTP_FILENAME" ]]; then
+    step "MTP Drafter: ${BOLD}${MTP_FILENAME}${NC}"
+  fi
 else
   error "Download failed or target file could not be determined."
 fi
