@@ -74,6 +74,9 @@ POOLING=""
 # Parse options and arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -h|--help|help)
+      usage
+      ;;
     --mmproj-quant)
       if [[ $# -lt 2 ]]; then
         error "--mmproj-quant requires an argument."
