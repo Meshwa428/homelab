@@ -52,11 +52,14 @@ ${BOLD}ARGUMENTS${NC}
 
 ${BOLD}OPTIONS${NC}
   --mmproj-quant    Quantization tag to prefer for mmproj vision projector file (default: f16)
+  --embedding       Explicitly mark model as an embedding model
+  --pooling <strat> Custom pooling strategy for embedding models (e.g. mean, cls)
 
 ${BOLD}EXAMPLES${NC}
   ./scripts/hf-pull.sh openbmb/MiniCPM-V-4.6-Thinking-gguf:Q4_K_M
   ./scripts/hf-pull.sh bartowski/Mistral-7B-Instruct-v0.3-GGUF:Q5_K_M mistral
-  ./scripts/hf-pull.sh openbmb/MiniCPM-V-4.6-Thinking-gguf:Q4_K_M --mmproj-quant f16
+  ./scripts/hf-pull.sh nomic-ai/nomic-embed-text-v1.5-GGUF:Q4_K_M
+  ./scripts/hf-pull.sh BAAI/bge-large-en-v1.5-gguf:Q4_K_M --pooling cls
 
 EOF
   exit 1
@@ -65,6 +68,8 @@ EOF
 HF_REF=""
 MODEL_KEY=""
 MMPROJ_QUANT=""
+EMBEDDING="false"
+POOLING=""
 
 # Parse options and arguments
 while [[ $# -gt 0 ]]; do
@@ -74,6 +79,17 @@ while [[ $# -gt 0 ]]; do
         error "--mmproj-quant requires an argument."
       fi
       MMPROJ_QUANT="$2"
+      shift 2
+      ;;
+    --embedding)
+      EMBEDDING="true"
+      shift
+      ;;
+    --pooling)
+      if [[ $# -lt 2 ]]; then
+        error "--pooling requires an argument."
+      fi
+      POOLING="$2"
       shift 2
       ;;
     -*)
@@ -120,6 +136,12 @@ step "Key:   ${BOLD}${MODEL_KEY}${NC}"
 if [[ -n "$MMPROJ_QUANT" ]]; then
   step "Projector Quant Preference: ${BOLD}${MMPROJ_QUANT}${NC}"
 fi
+if [[ "$EMBEDDING" == "true" ]]; then
+  step "Forced Embedding Model: ${BOLD}true${NC}"
+fi
+if [[ -n "$POOLING" ]]; then
+  step "Pooling Strategy Override: ${BOLD}${POOLING}${NC}"
+fi
 echo ""
 
 # We use huggingface_hub inside Python with hf_transfer enabled for maximum speed.
@@ -152,6 +174,8 @@ docker run --rm $TTY_FLAG \
   -e QUANT="$QUANT" \
   -e MODEL_KEY="$MODEL_KEY" \
   -e MMPROJ_QUANT="$MMPROJ_QUANT" \
+  -e EMBEDDING="$EMBEDDING" \
+  -e POOLING="$POOLING" \
   -e SUCCESS_FILE_CONTAINER="$SUCCESS_FILE_CONTAINER" \
   "${ENV_ARGS[@]}" \
   -e PYTHONUNBUFFERED=1 \
@@ -159,12 +183,39 @@ docker run --rm $TTY_FLAG \
   sh -c "pip install -q huggingface_hub && \
          python3 -u -c \"
 import os, sys, json
+import urllib.request
+import urllib.error
 from huggingface_hub import hf_hub_download, list_repo_files
 
 repo = os.environ['REPO_ID']
 quant = os.environ['QUANT'].lower()
 model_key = os.environ['MODEL_KEY']
 mmproj_quant = os.environ.get('MMPROJ_QUANT', '').lower() or None
+is_embedding = os.environ.get('EMBEDDING', 'false') == 'true'
+pooling = os.environ.get('POOLING', '') or None
+
+# Fetch repository metadata for auto-detection of embedding models
+try:
+    url = f'https://huggingface.co/api/models/{repo}'
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=10) as response:
+        info = json.loads(response.read().decode('utf-8'))
+        pipeline_tag = info.get('pipeline_tag', '')
+        library_name = info.get('library_name', '')
+        tags = info.get('tags', [])
+        
+        is_embedding_detected = (
+            pipeline_tag in ('feature-extraction', 'sentence-similarity') or
+            library_name == 'sentence-transformers' or
+            any(t in tags for t in ('sentence-transformers', 'sentence-similarity', 'feature-extraction'))
+        )
+        if is_embedding_detected:
+            is_embedding = True
+except Exception as e:
+    print(f'Warning: Could not auto-detect embedding model status: {e}', file=sys.stderr)
+
+if is_embedding and not pooling:
+    pooling = 'mean'
 
 try:
     files = list_repo_files(repo)
@@ -270,7 +321,9 @@ if mmproj_target:
 result = {
     'model': main_downloaded_name,
     'mmproj': mmproj_downloaded_name,
-    'warning': mmproj_warning
+    'warning': mmproj_warning,
+    'is_embedding': is_embedding,
+    'pooling': pooling
 }
 with open(os.environ['SUCCESS_FILE_CONTAINER'], 'w') as f:
     json.dump(result, f)
@@ -285,6 +338,8 @@ try:
     print(data.get('model', ''))
     print(data.get('mmproj', '') or '')
     print(data.get('warning', '') or '')
+    print('true' if data.get('is_embedding') else 'false')
+    print(data.get('pooling', '') or '')
 except Exception as e:
     sys.exit(1)
 " "$SUCCESS_FILE_HOST")
@@ -292,6 +347,8 @@ except Exception as e:
   FILENAME=$(echo "$PARSED_JSON" | sed -n '1p')
   MMPROJ_FILENAME=$(echo "$PARSED_JSON" | sed -n '2p')
   MMPROJ_WARNING=$(echo "$PARSED_JSON" | sed -n '3p')
+  IS_EMBEDDING=$(echo "$PARSED_JSON" | sed -n '4p')
+  POOLING=$(echo "$PARSED_JSON" | sed -n '5p')
   
   rm -f "$SUCCESS_FILE_HOST"
 else
@@ -334,9 +391,20 @@ if [[ -n "$MMPROJ_FILENAME" ]]; then
   MMPROJ_ARG=" --mmproj /models/${REPO_ID}/${MMPROJ_FILENAME}"
 fi
 
+EMBEDDING_ARGS=""
+CTX_SIZE="2048"
+if [[ "$IS_EMBEDDING" == "true" ]]; then
+  CTX_SIZE="8192"
+  EMBEDDING_ARGS=" --embedding"
+  if [[ -n "$POOLING" ]]; then
+    EMBEDDING_ARGS="${EMBEDDING_ARGS} --pooling ${POOLING}"
+  fi
+  info "Detected Embedding Model! Registering with context size ${BOLD}${CTX_SIZE}${NC} and pooling strategy ${BOLD}${POOLING}${NC}."
+fi
+
 cat <<EOF >> "$CONFIG_FILE"
   "${MODEL_KEY}":
-    cmd: "llama-server --port \${PORT} --model /models/${REPO_ID}/${FILENAME}${MMPROJ_ARG} -c 2048 --threads 4"
+    cmd: "llama-server --port \${PORT} --model /models/${REPO_ID}/${FILENAME}${MMPROJ_ARG}${EMBEDDING_ARGS} -c ${CTX_SIZE} --threads 4"
     proxy: "http://127.0.0.1:\${PORT}"
     ttl: 300
 EOF
