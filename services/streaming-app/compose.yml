@@ -1,0 +1,47 @@
+services:
+  streaming-app-backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    container_name: streaming-app-backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - TMDB_API_KEY=${STREAMING_APP_TMDB_API_KEY}
+      - STREAM_SOURCE=${STREAMING_APP_STREAM_SOURCE}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- 127.0.0.1:3000/api/health/ping || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [proxy]
+
+  streaming-app:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    container_name: streaming-app
+    restart: unless-stopped
+    depends_on:
+      streaming-app-backend:
+        condition: service_healthy
+    networks: [proxy]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.streaming-app.rule=Host(`movies.home.meshwa.space`)"
+      - "traefik.http.routers.streaming-app.entrypoints=websecure"
+      - "traefik.http.routers.streaming-app.tls=true"
+      - "traefik.http.routers.streaming-app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.streaming-app.loadbalancer.server.port=80"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.streaming-app-local.rule=Host(`movies.homeserver.com`)"
+      - "traefik.http.routers.streaming-app-local.entrypoints=websecure"
+      - "traefik.http.routers.streaming-app-local.tls=true"
+      - "traefik.http.routers.streaming-app-local.service=streaming-app"
+
+networks:
+  proxy:
+    external: true
+    name: proxy

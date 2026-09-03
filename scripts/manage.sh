@@ -204,7 +204,7 @@ _compose() {
 
 _validate() {
   for s in "$@"; do
-    [[ -n "${SERVICES[$s]+_}" ]] || error "Unknown service: '$s'. Run 'make list' to see valid names."
+    [[ -n "${SERVICES[$s]+_}" ]] || error "Unknown service: '$s'. Run './lab list' to see valid names."
   done
 }
 
@@ -332,7 +332,7 @@ cmd_up() {
   done
 
   echo ""
-  info "Done. Run 'make status' to verify."
+  info "Done. Run './lab status' to verify."
 }
 
 cmd_down() {
@@ -374,7 +374,7 @@ cmd_down() {
 }
 
 cmd_restart() {
-  [[ "$#" -eq 0 ]] && error "Usage: make <service>-restart"
+  [[ "$#" -eq 0 ]] && error "Usage: ./lab restart <service>"
   _validate "$@"
 
   header "Restarting: $*"
@@ -389,7 +389,7 @@ cmd_restart() {
 # remove — Stop and remove containers but keep files on disk
 # ------------------------------------------------------------------------------
 cmd_remove() {
-  [[ "$#" -eq 0 ]] && error "Usage: make <service>-remove"
+  [[ "$#" -eq 0 ]] && error "Usage: ./lab remove <service>"
   _validate "$@"
 
   for s in "$@"; do
@@ -411,7 +411,7 @@ cmd_remove() {
 # delete — Stop containers AND delete the entire service directory from disk
 # ------------------------------------------------------------------------------
 cmd_delete() {
-  [[ "$#" -eq 0 ]] && error "Usage: make <service>-delete"
+  [[ "$#" -eq 0 ]] && error "Usage: ./lab delete <service>"
   _validate "$@"
 
   for s in "$@"; do
@@ -505,7 +505,7 @@ cmd_status() {
   if $all_healthy; then
     info "All services running."
   else
-    warn "Some services are not healthy. Run 'make heal' to fix."
+    warn "Some services are not healthy. Run './lab heal' to fix."
   fi
 }
 
@@ -698,12 +698,12 @@ cmd_heal() {
   if [[ "$healed" -eq 0 ]]; then
     info "Nothing to heal — all services are healthy."
   else
-    info "Healed $healed service(s). Run 'make status' to verify."
+    info "Healed $healed service(s). Run './lab status' to verify."
   fi
 }
 
 cmd_logs() {
-  [[ "$#" -eq 0 ]] && error "Usage: make <service>-logs"
+  [[ "$#" -eq 0 ]] && error "Usage: ./lab logs <service>"
   local service="$1"; shift
   _validate "$service"
   echo -e "\n${DIM}Logs for: $service${NC}\n"
@@ -727,7 +727,7 @@ cmd_pull() {
   done
 
   echo ""
-  info "Images updated. Restart with: make <service>-restart"
+  info "Images updated. Restart with: ./lab restart <service>"
 }
 
 cmd_list() {
@@ -751,22 +751,23 @@ usage() {
   cat <<EOF
 
 ${BOLD}Homelab Service Manager${NC}
+${DIM}(internal engine — use ./lab from the repo root instead; run this file directly only for debugging)${NC}
 
 ${BOLD}GLOBAL COMMANDS${NC}
-  ${CYAN}make up${NC}                    Start all services (auto boot order)
-  ${CYAN}make down${NC}                  Stop all services (warns first)
-  ${CYAN}make status${NC}                Health table for all services
-  ${CYAN}make heal${NC}                  Start any crashed or missing services
-  ${CYAN}make list${NC}                  List all services with deps and boot order
+  ${CYAN}./lab up${NC}                    Start all services (auto boot order)
+  ${CYAN}./lab down${NC}                  Stop all services (warns first)
+  ${CYAN}./lab status${NC}                Health table for all services
+  ${CYAN}./lab heal${NC}                  Start any crashed or missing services
+  ${CYAN}./lab list${NC}                  List all services with deps and boot order
 
 ${BOLD}PER-SERVICE COMMANDS${NC}
-  ${CYAN}make <service>${NC}             Start service (resolves deps automatically)
-  ${CYAN}make <service>-down${NC}        Stop service
-  ${CYAN}make <service>-restart${NC}     Restart service (recreates container)
-  ${CYAN}make <service>-logs${NC}        Follow logs (ctrl+c to exit)
-  ${CYAN}make <service>-pull${NC}        Pull latest image
-  ${CYAN}make <service>-remove${NC}      Stop and remove containers (keep files)
-  ${CYAN}make <service>-delete${NC}      Remove containers AND delete service directory
+  ${CYAN}./lab up <service>${NC}          Start service (resolves deps automatically)
+  ${CYAN}./lab down <service>${NC}        Stop service
+  ${CYAN}./lab restart <service>${NC}     Restart service (recreates container)
+  ${CYAN}./lab logs <service>${NC}        Follow logs (ctrl+c to exit)
+  ${CYAN}./lab pull <service>${NC}        Pull latest image
+  ${CYAN}./lab remove <service>${NC}      Stop and remove containers (keep files)
+  ${CYAN}./lab delete <service>${NC}      Remove containers AND delete service directory
 
 ${BOLD}ADDING A SERVICE${NC}
   1. Create the compose.yml anywhere under homelab/
@@ -775,13 +776,13 @@ ${BOLD}ADDING A SERVICE${NC}
   3. That's it. It is auto-discovered on next run.
 
 ${BOLD}EXAMPLES${NC}
-  make up
-  make down
-  make llama-swap          # starts llama-swap
-  make open-webui          # starts llama-swap first (dep), then open-webui
-  make dns                 # starts vpn first (dep), then dns
-  make status
-  make heal
+  ./lab up
+  ./lab down
+  ./lab up llama-swap       # starts llama-swap
+  ./lab up open-webui       # starts llama-swap first (dep), then open-webui
+  ./lab up dns              # starts vpn first (dep), then dns
+  ./lab status
+  ./lab heal
 
 EOF
 }
@@ -809,5 +810,5 @@ case "$COMMAND" in
   pull)    cmd_pull "$@"    ;;
   list)    cmd_list         ;;
   help|--help|-h) usage     ;;
-  *) error "Unknown command: '$COMMAND'. Run 'make help'" ;;
+  *) error "Unknown command: '$COMMAND'. Run './lab help'" ;;
 esac

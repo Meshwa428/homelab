@@ -16,6 +16,9 @@ services:
       - SYS_MODULE
     restart: unless-stopped
     networks: [proxy]
+    labels:
+      # Updated by scripts/idle-critical-update.sh (idle-gated), not WUD.
+      - "wud.watch=false"
 
   adguard:
     image: adguard/adguardhome
@@ -28,6 +31,8 @@ services:
     depends_on:
       - ts-dns
     labels:
+      # Updated by scripts/idle-critical-update.sh (idle-gated), not WUD.
+      - "wud.watch=false"
       - "traefik.enable=true"
       - "traefik.http.routers.adguard.rule=Host(`adguard.home.meshwa.space`)"
       - "traefik.http.routers.adguard.entrypoints=websecure"

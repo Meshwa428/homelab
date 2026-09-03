@@ -15,6 +15,9 @@ services:
       - NET_ADMIN
       - SYS_MODULE
     restart: unless-stopped
+    labels:
+      # Updated by scripts/idle-critical-update.sh (idle-gated), not WUD.
+      - "wud.watch=false"
 
   traefik:
     image: traefik:v2.11
@@ -34,6 +37,9 @@ services:
       - ./config/dynamic:/etc/traefik/dynamic:ro
       - ./certs:/certs:ro
       - ./acme/acme.json:/acme.json
+    labels:
+      # Updated by scripts/idle-critical-update.sh (idle-gated), not WUD.
+      - "wud.watch=false"
 
 networks:
   default:

@@ -10,6 +10,7 @@ services:
       - proxy
     command: --config /app/config.yaml --listen 0.0.0.0:8080
     labels:
+      - "wud.watch.digest=true"
       - "traefik.enable=true"
       - "traefik.http.routers.llama-swap.rule=Host(`ollama.home.meshwa.space`)"
       - "traefik.http.routers.llama-swap.entrypoints=websecure"

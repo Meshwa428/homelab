@@ -8,3 +8,5 @@ services:
       -email ${HONEYGAIN_EMAIL}
       -pass ${HONEYGAIN_PASS}
       -device ${HONEYGAIN_DEVICE}
+    labels:
+      - "wud.watch.digest=true"

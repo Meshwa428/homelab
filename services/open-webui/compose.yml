@@ -14,6 +14,7 @@ services:
     networks:
       - proxy
     labels:
+      - "wud.watch.digest=true"
       - "traefik.enable=true"
       - "traefik.http.routers.open-webui.rule=Host(`ai.home.meshwa.space`)"
       - "traefik.http.routers.open-webui.entrypoints=websecure"

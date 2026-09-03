@@ -5,6 +5,8 @@ services:
     volumes:
       - ./data:/home/coder/.local/share/code-server
     command: chown -R 1000:1000 /home/coder/.local/share/code-server
+    labels:
+      - "wud.watch.digest=true"
 
   code-server:
     depends_on:
@@ -27,6 +29,7 @@ services:
     tty: true
     stdin_open: true
     labels:
+      - "wud.watch.digest=true"
       - "traefik.enable=true"
       - "traefik.http.routers.vscode.rule=Host(`vscode.home.meshwa.space`)"
       - "traefik.http.routers.vscode.entrypoints=websecure"

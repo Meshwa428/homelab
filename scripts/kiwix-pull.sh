@@ -32,10 +32,33 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-BASE_URL="https://download.kiwix.org/zim"
 HOMELAB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_DEST="$HOMELAB_DIR/services/kiwix/data"
 DEFAULT_LANG="en"
+
+# Mirror host, overridable via KIWIX_MIRROR_URL in shared/.env — Kiwix has
+# moved this before (download.kiwix.org/zim → lb.download.kiwix.org/zim) with
+# no notice, so a re-break should only ever need an .env edit, not a script
+# edit. Same parse pattern as HEAL_BLACKLIST above.
+BASE_URL="https://lb.download.kiwix.org/zim"
+if [[ -f "$HOMELAB_DIR/shared/.env" ]]; then
+  env_override=$(grep -E "^KIWIX_MIRROR_URL=" "$HOMELAB_DIR/shared/.env" | cut -d'=' -f2- | sed "s/^[ '\"\t]*//;s/[ '\"\t]*\$//" || true)
+  [[ -n "$env_override" ]] && BASE_URL="$env_override"
+fi
+
+# Printed usage text reflects how this script was actually invoked: through
+# `./lab kiwix ...` (the normal path) or directly as ./scripts/kiwix-pull.sh.
+if [[ "${LAB_INVOKED:-}" == "1" ]]; then
+  CMD_LIST="./lab kiwix list"
+  CMD_BROWSE="./lab kiwix browse"
+  CMD_PULL="./lab kiwix pull"
+  CMD_FILE="./lab kiwix file"
+else
+  CMD_LIST="./scripts/kiwix-pull.sh --list"
+  CMD_BROWSE="./scripts/kiwix-pull.sh --browse"
+  CMD_PULL="./scripts/kiwix-pull.sh"
+  CMD_FILE="./scripts/kiwix-pull.sh --file"
+fi
 
 # ── Colors ────────────────────────────────────────────────────────────────────
 
@@ -190,7 +213,11 @@ cmd_browse() {
 
   echo ""
   dim "To download a specific file:"
-  echo -e "  ${BOLD}./scripts/kiwix-pull.sh --file <filename> $category${NC}"
+  if [[ "${LAB_INVOKED:-}" == "1" ]]; then
+    echo -e "  ${BOLD}${CMD_FILE} $category <filename>${NC}"
+  else
+    echo -e "  ${BOLD}${CMD_FILE} <filename> $category${NC}"
+  fi
   echo ""
 }
 
@@ -253,7 +280,7 @@ cmd_pull_file() {
     info "$filename downloaded"
     echo ""
     step "Restart Kiwix to load the new file:"
-    echo -e "       ${BOLD}make kiwix-restart${NC}"
+    echo -e "       ${BOLD}./lab restart kiwix${NC}"
     echo ""
   else
     error "Download failed."
@@ -382,7 +409,7 @@ cmd_pull() {
   if [[ $success -gt 0 ]]; then
     echo ""
     step "Restart Kiwix to load new files:"
-    echo -e "       ${BOLD}make kiwix-restart${NC}"
+    echo -e "       ${BOLD}./lab restart kiwix${NC}"
     echo ""
   fi
 }
@@ -399,28 +426,57 @@ CATEGORIES=()
 
 usage() {
   echo ""
-  echo -e "  ${BOLD}Usage:${NC} ./scripts/kiwix-pull.sh [options] <category> [category2 ...]"
-  echo ""
-  echo -e "  ${BOLD}Options:${NC}"
-  echo "    --list              List all available categories"
-  echo "    --browse <cat>      List files in a category (use with --lang to filter)"
-  echo "    --file <name> <cat> Download one exact file by name"
-  echo "    --lang <code>       Language code to filter (default: en)"
-  echo "    --all-lang          Download all languages (overrides --lang)"
-  echo "    --dest <dir>        Destination directory (default: services/kiwix/data)"
-  echo "    --dry-run           Preview without downloading"
-  echo ""
-  echo -e "  ${BOLD}Examples:${NC}"
-  echo "    ./scripts/kiwix-pull.sh devdocs"
-  echo "    ./scripts/kiwix-pull.sh freecodecamp stack_exchange"
-  echo "    ./scripts/kiwix-pull.sh --lang de wikipedia"
-  echo "    ./scripts/kiwix-pull.sh --browse wikipedia"
-  echo "    ./scripts/kiwix-pull.sh --browse wikipedia --lang fr"
-  echo "    ./scripts/kiwix-pull.sh --file wikipedia_en_all_2026-02.zim wikipedia"
-  echo "    ./scripts/kiwix-pull.sh --file https://download.kiwix.org/zim/other/archlinux_en_all_maxi_2025-09.zim"
-  echo "    ./scripts/kiwix-pull.sh --dry-run devdocs"
-  echo "    ./scripts/kiwix-pull.sh --list"
-  echo ""
+  if [[ "${LAB_INVOKED:-}" == "1" ]]; then
+    echo -e "  ${BOLD}Usage:${NC} ${CMD_PULL} <category> [category2 ...] [--lang <code>] [--dry-run]"
+    echo ""
+    echo -e "  ${BOLD}Subcommands:${NC}"
+    echo "    ./lab kiwix list                    List all available categories"
+    echo "    ./lab kiwix browse <cat>             List files in a category (use with --lang to filter)"
+    echo "    ./lab kiwix file <cat> <name>         Download one exact file by name"
+    echo "    ./lab kiwix file <url>                Download one exact file by URL"
+    echo "    ./lab kiwix pull <cat> [cat2 ...]     Download a category (options below)"
+    echo ""
+    echo -e "  ${BOLD}Options (for pull/browse):${NC}"
+    echo "    --lang <code>       Language code to filter (default: en)"
+    echo "    --all-lang          Download all languages (overrides --lang)"
+    echo "    --dest <dir>        Destination directory (default: services/kiwix/data)"
+    echo "    --dry-run           Preview without downloading"
+    echo ""
+    echo -e "  ${BOLD}Examples:${NC}"
+    echo "    ./lab kiwix pull devdocs"
+    echo "    ./lab kiwix pull freecodecamp stack_exchange"
+    echo "    ./lab kiwix pull wikipedia --lang de"
+    echo "    ./lab kiwix browse wikipedia"
+    echo "    ./lab kiwix browse wikipedia --lang fr"
+    echo "    ./lab kiwix file wikipedia wikipedia_en_all_2026-02.zim"
+    echo "    ./lab kiwix file https://download.kiwix.org/zim/other/archlinux_en_all_maxi_2025-09.zim"
+    echo "    ./lab kiwix pull devdocs --dry-run"
+    echo "    ./lab kiwix list"
+    echo ""
+  else
+    echo -e "  ${BOLD}Usage:${NC} ./scripts/kiwix-pull.sh [options] <category> [category2 ...]"
+    echo ""
+    echo -e "  ${BOLD}Options:${NC}"
+    echo "    --list              List all available categories"
+    echo "    --browse <cat>      List files in a category (use with --lang to filter)"
+    echo "    --file <name> <cat> Download one exact file by name"
+    echo "    --lang <code>       Language code to filter (default: en)"
+    echo "    --all-lang          Download all languages (overrides --lang)"
+    echo "    --dest <dir>        Destination directory (default: services/kiwix/data)"
+    echo "    --dry-run           Preview without downloading"
+    echo ""
+    echo -e "  ${BOLD}Examples:${NC}"
+    echo "    ./scripts/kiwix-pull.sh devdocs"
+    echo "    ./scripts/kiwix-pull.sh freecodecamp stack_exchange"
+    echo "    ./scripts/kiwix-pull.sh --lang de wikipedia"
+    echo "    ./scripts/kiwix-pull.sh --browse wikipedia"
+    echo "    ./scripts/kiwix-pull.sh --browse wikipedia --lang fr"
+    echo "    ./scripts/kiwix-pull.sh --file wikipedia_en_all_2026-02.zim wikipedia"
+    echo "    ./scripts/kiwix-pull.sh --file https://download.kiwix.org/zim/other/archlinux_en_all_maxi_2025-09.zim"
+    echo "    ./scripts/kiwix-pull.sh --dry-run devdocs"
+    echo "    ./scripts/kiwix-pull.sh --list"
+    echo ""
+  fi
   exit 0
 }
 

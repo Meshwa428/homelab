@@ -8,6 +8,7 @@ services:
       - ./data:/data
     networks: [proxy]
     labels:
+      - "wud.watch.digest=true"
       - "traefik.enable=true"
       - "traefik.http.routers.kiwix.rule=Host(`kiwix.home.meshwa.space`)"
       - "traefik.http.routers.kiwix.entrypoints=websecure"

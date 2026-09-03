@@ -819,7 +819,7 @@ KIWIX_SCRIPT="$SCRIPTS_DIR/kiwix-pull.sh"
 KIWIX_DATA="$HOMELAB_DIR/services/kiwix/data"
 
 kiwix_list() {
-  "$KIWIX_SCRIPT" --list
+  LAB_INVOKED=1 "$KIWIX_SCRIPT" --list
 }
 
 kiwix_browse() {
@@ -827,12 +827,12 @@ kiwix_browse() {
   local args=(--browse "$1")
   shift
   # Pass through any remaining flags (--lang, --all-lang)
-  "$KIWIX_SCRIPT" "${args[@]}" "$@"
+  LAB_INVOKED=1 "$KIWIX_SCRIPT" "${args[@]}" "$@"
 }
 
 kiwix_pull() {
   [[ $# -lt 1 ]] && { echo "Usage: ./lab kiwix pull <category> [category2 ...] [--lang <code>] [--dry-run]"; exit 1; }
-  "$KIWIX_SCRIPT" "$@"
+  LAB_INVOKED=1 "$KIWIX_SCRIPT" "$@"
 }
 
 kiwix_file() {
@@ -840,11 +840,11 @@ kiwix_file() {
   local arg1="$1"
   # If it's a URL, pass directly
   if [[ "$arg1" == http* ]]; then
-    "$KIWIX_SCRIPT" --file "$arg1"
+    LAB_INVOKED=1 "$KIWIX_SCRIPT" --file "$arg1"
   else
     # arg1=category, arg2=filename → swap for kiwix-pull.sh (--file <name> <category>)
     [[ $# -lt 2 ]] && { echo "Usage: ./lab kiwix file <category> <filename>"; exit 1; }
-    "$KIWIX_SCRIPT" --file "$2" "$1"
+    LAB_INVOKED=1 "$KIWIX_SCRIPT" --file "$2" "$1"
   fi
 }
 

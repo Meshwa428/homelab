@@ -9,6 +9,7 @@ services:
     networks:
       - proxy
     labels:
+      - "wud.watch.digest=true"
       - "traefik.enable=true"
       - "traefik.http.routers.portainer.rule=Host(`portainer.home.meshwa.space`)"
       - "traefik.http.routers.portainer.entrypoints=websecure"

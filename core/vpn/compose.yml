@@ -17,3 +17,6 @@ services:
       - SYS_MODULE
     restart: unless-stopped
     network_mode: host
+    labels:
+      # Updated by scripts/idle-critical-update.sh (idle-gated), not WUD.
+      - "wud.watch=false"

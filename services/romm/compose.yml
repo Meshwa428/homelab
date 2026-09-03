@@ -18,6 +18,8 @@ services:
       timeout: 5s
       retries: 5
     networks: [proxy]
+    labels:
+      - "wud.watch.digest=true"
 
   romm:
     image: rommapp/romm:latest
@@ -46,6 +48,7 @@ services:
         restart: true
     networks: [proxy]
     labels:
+      - "wud.watch.digest=true"
       - "traefik.enable=true"
       - "traefik.http.routers.romm.rule=Host(`romm.home.meshwa.space`)"
       - "traefik.http.routers.romm.entrypoints=websecure"
